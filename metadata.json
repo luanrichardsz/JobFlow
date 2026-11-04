@@ -1,0 +1,6 @@
+{
+  "name": "JobFlow",
+  "description": "Sistema pessoal e open source para gerenciamento e acompanhamento de candidaturas a vagas de emprego com interface inspirada no Linear.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
