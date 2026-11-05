@@ -9,6 +9,7 @@ import {
   Moon,
   Check,
   Calendar,
+  Clock,
   AlertTriangle,
   ChevronRight,
   Trash2,
@@ -21,6 +22,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
   const {
     activeView,
+    setActiveView,
     setCommandPaletteOpen,
     setIsNewApplicationModalOpen,
     notifications,
@@ -130,8 +132,8 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold">Notificações</span>
                   {unreadCount > 0 && (
-                    <span className="px-1.5 py-0.5 text-xs rounded-full bg-white/[0.06] text-white tabular-nums">
-                      {unreadCount} novas
+                    <span className="px-1.5 py-0.5 text-xs rounded-full bg-white/[0.06] text-[#f4f5f6] tabular-nums">
+                      {unreadCount} {unreadCount === 1 ? 'nova' : 'novas'}
                     </span>
                   )}
                 </div>
@@ -173,6 +175,9 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
                           if (notif.applicationId) {
                             setSelectedApplicationId(notif.applicationId);
                             setNotificationsOpen(false);
+                          } else if (notif.type === 'interview' || notif.id.startsWith('notif_evt_')) {
+                            setActiveView('calendar');
+                            setNotificationsOpen(false);
                           }
                         }}
                         className={`p-3 text-xs transition-colors cursor-pointer hover:bg-white/5 ${
@@ -182,13 +187,15 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-2">
                             {notif.type === 'interview' ? (
-                              <Calendar className="w-3.5 h-3.5 text-[#a1a4aa] mt-0.5 shrink-0" />
+                              <Calendar className="w-3.5 h-3.5 text-[#3FBF8A] mt-0.5 shrink-0" />
+                            ) : notif.type === 'update' ? (
+                              <Clock className="w-3.5 h-3.5 text-[#e5a93b] mt-0.5 shrink-0" />
                             ) : (
                               <AlertTriangle className="w-3.5 h-3.5 text-[#e5a93b] mt-0.5 shrink-0" />
                             )}
                             <div>
-                              <p className="font-medium text-[12px]">{notif.title}</p>
-                              <p className="text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 text-xs mt-0.5">
+                              <p className="font-medium text-xs text-[#f4f5f6]">{notif.title}</p>
+                              <p className="text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 text-xs mt-0.5 leading-relaxed">
                                 {notif.message}
                               </p>
                             </div>
