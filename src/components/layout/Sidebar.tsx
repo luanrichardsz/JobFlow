@@ -17,9 +17,16 @@ import { ActiveView } from '../../types';
 interface SidebarProps {
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
+  desktopOpen: boolean;
+  setDesktopOpen: (open: boolean) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  mobileOpen,
+  setMobileOpen,
+  desktopOpen,
+  setDesktopOpen,
+}) => {
   const {
     activeView,
     setActiveView,
@@ -102,9 +109,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       )}
 
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-40 w-60 flex flex-col justify-between transition-transform duration-200 ease-in-out lg:translate-x-0 border-r bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] dark:bg-[#0b0c0e] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-[#FAFAFB] light:border-neutral-200 light:text-neutral-900 ${
+        className={`fixed top-0 bottom-0 left-0 z-40 w-60 flex flex-col justify-between transition-transform duration-200 ease-in-out border-r bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] dark:bg-[#0b0c0e] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-[#FAFAFB] light:border-neutral-200 light:text-neutral-900 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        } ${desktopOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'}`}
       >
         {/* Top brand */}
         <div className="flex flex-col">
@@ -120,9 +127,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             </div>
 
             <button
-              onClick={() => setMobileOpen(false)}
-              className="p-1 rounded lg:hidden text-neutral-400 hover:text-neutral-200"
+              onClick={() => {
+                setMobileOpen(false);
+                setDesktopOpen(false);
+              }}
+              className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-white/5 transition-colors"
               aria-label="Fechar menu"
+              title="Esconder menu"
             >
               <X className="w-4 h-4" />
             </button>

@@ -17,9 +17,15 @@ import {
 
 interface HeaderProps {
   setMobileOpen: (open: boolean) => void;
+  desktopOpen: boolean;
+  setDesktopOpen: (open: boolean) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
+export const Header: React.FC<HeaderProps> = ({
+  setMobileOpen,
+  desktopOpen,
+  setDesktopOpen,
+}) => {
   const {
     activeView,
     setActiveView,
@@ -67,12 +73,18 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
 
   return (
     <header className="sticky top-0 z-30 h-14 w-full flex items-center justify-between px-4 md:px-6 border-b bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] dark:bg-[#0b0c0e] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white/80 light:border-neutral-200 light:text-neutral-900">
-      {/* Left zone: Mobile hamburger & Breadcrumb */}
+      {/* Left zone: Mobile/Desktop menu trigger & Breadcrumb */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setMobileOpen(true)}
-          className="p-1.5 rounded-md lg:hidden text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+          onClick={() => {
+            setMobileOpen(true);
+            setDesktopOpen(true);
+          }}
+          className={`p-1.5 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-white/5 transition-colors ${
+            desktopOpen ? 'lg:hidden' : ''
+          }`}
           aria-label="Abrir menu"
+          title="Abrir menu"
         >
           <Menu className="w-4 h-4" />
         </button>
