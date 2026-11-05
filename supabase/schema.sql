@@ -62,8 +62,11 @@ CREATE TABLE IF NOT EXISTS public.calendar_events (
   meeting_url text DEFAULT '',
   notes text DEFAULT '',
   completed boolean NOT NULL DEFAULT false,
+  google_event_id text DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS google_event_id text DEFAULT '';
 
 -- 4. Tabela de notificações do sistema
 CREATE TABLE IF NOT EXISTS public.notifications (

@@ -23,6 +23,16 @@ import {
   DbCVVersionRow,
   DbNotificationRow,
 } from '../lib/supabase';
+import {
+  isGoogleCalendarConfigured,
+  getStoredGoogleToken,
+  clearStoredGoogleToken,
+  requestGoogleCalendarToken,
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+  openInGoogleCalendar,
+} from '../utils/calendarSync';
 
 export interface Toast {
   id: string;
@@ -66,10 +76,20 @@ interface JobContextType {
   ) => void;
 
   // Events
-  addEvent: (event: Omit<CalendarEvent, 'id'>) => void;
+  addEvent: (
+    event: Omit<CalendarEvent, 'id'>,
+    options?: { openGoogleUrlFallback?: boolean }
+  ) => void;
   updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
   deleteEvent: (id: string) => void;
   toggleEventCompleted: (id: string) => void;
+
+  // Google Calendar integration
+  isGoogleCalendarConfigured: boolean;
+  googleCalendarConnected: boolean;
+  connectGoogleCalendar: () => Promise<void>;
+  disconnectGoogleCalendar: () => void;
+  syncEventToGoogleCalendar: (eventId: string) => Promise<void>;
 
   // CVs
   addCVVersion: (cv: Omit<CVVersion, 'id'>) => void;
@@ -100,6 +120,9 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState<boolean>(isSupabaseConfigured);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean>(false);
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
+  const [googleCalendarConnected, setGoogleCalendarConnected] = useState<boolean>(() =>
+    Boolean(getStoredGoogleToken())
+  );
 
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
@@ -461,8 +484,76 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Google Calendar OAuth & Sync
+  const connectGoogleCalendar = async () => {
+    try {
+      const token = await requestGoogleCalendarToken();
+      if (token) {
+        setGoogleCalendarConnected(true);
+        showToast('Google Agenda conectado! Suas reuniões serão sincronizadas automaticamente.', 'success');
+      }
+    } catch (err) {
+      setGoogleCalendarConnected(false);
+      showToast(
+        err instanceof Error ? err.message : 'Não foi possível conectar ao Google Agenda.',
+        'error'
+      );
+    }
+  };
+
+  const disconnectGoogleCalendar = () => {
+    clearStoredGoogleToken();
+    setGoogleCalendarConnected(false);
+    showToast('Conta do Google Agenda desconectada.', 'info');
+  };
+
+  const syncEventToGoogleCalendar = async (eventId: string) => {
+    const target = events.find((e) => e.id === eventId);
+    if (!target) return;
+
+    let token = getStoredGoogleToken();
+    if (!token) {
+      if (!isGoogleCalendarConfigured) {
+        openInGoogleCalendar(target);
+        return;
+      }
+      try {
+        token = await requestGoogleCalendarToken();
+        setGoogleCalendarConnected(true);
+      } catch {
+        openInGoogleCalendar(target);
+        return;
+      }
+    }
+
+    try {
+      const gcalId = await createGoogleCalendarEvent(token, target);
+      if (gcalId) {
+        setEvents((prev) =>
+          prev.map((e) => (e.id === eventId ? { ...e, googleEventId: gcalId } : e))
+        );
+        if (supabase) {
+          void supabase
+            .from('calendar_events')
+            .update({ google_event_id: gcalId })
+            .eq('id', eventId);
+        }
+        showToast('Evento sincronizado automaticamente com o Google Agenda!', 'success');
+      }
+    } catch (err) {
+      setGoogleCalendarConnected(Boolean(getStoredGoogleToken()));
+      showToast(
+        err instanceof Error ? err.message : 'Falha ao sincronizar com Google Agenda.',
+        'error'
+      );
+    }
+  };
+
   // Events CRUD
-  const addEvent = (eventData: Omit<CalendarEvent, 'id'>) => {
+  const addEvent = (
+    eventData: Omit<CalendarEvent, 'id'>,
+    options?: { openGoogleUrlFallback?: boolean }
+  ) => {
     const newEvent: CalendarEvent = {
       ...eventData,
       id: 'evt_' + Math.random().toString(36).substring(2, 9),
@@ -480,6 +571,35 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             showToast(`Erro ao salvar evento no Supabase: ${error.message}`, 'error');
           }
         });
+    }
+
+    const token = getStoredGoogleToken();
+    if (token) {
+      void createGoogleCalendarEvent(token, newEvent)
+        .then((gcalId) => {
+          if (gcalId) {
+            setEvents((prev) =>
+              prev.map((e) => (e.id === newEvent.id ? { ...e, googleEventId: gcalId } : e))
+            );
+            if (supabase) {
+              void supabase
+                .from('calendar_events')
+                .update({ google_event_id: gcalId })
+                .eq('id', newEvent.id);
+            }
+            showToast('Sincronizado com sua agenda do Google!', 'info');
+          }
+        })
+        .catch((err) => {
+          console.error('Google Calendar auto-sync error:', err);
+          setGoogleCalendarConnected(Boolean(getStoredGoogleToken()));
+          showToast(
+            err instanceof Error ? err.message : 'Erro ao sincronizar com Google Agenda.',
+            'warning'
+          );
+        });
+    } else if (options?.openGoogleUrlFallback) {
+      openInGoogleCalendar(newEvent);
     }
   };
 
@@ -503,9 +623,20 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         });
     }
+
+    const token = getStoredGoogleToken();
+    if (token && updatedEvt.googleEventId) {
+      void updateGoogleCalendarEvent(token, updatedEvt.googleEventId, updatedEvt).catch(
+        (err) => {
+          console.error('Google Calendar update error:', err);
+          setGoogleCalendarConnected(Boolean(getStoredGoogleToken()));
+        }
+      );
+    }
   };
 
   const deleteEvent = (id: string) => {
+    const targetEvt = events.find((e) => e.id === id);
     setEvents((prev) => prev.filter((e) => e.id !== id));
     showToast('Atividade removida.', 'warning');
 
@@ -520,6 +651,13 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             showToast(`Erro ao remover evento no Supabase: ${error.message}`, 'error');
           }
         });
+    }
+
+    const token = getStoredGoogleToken();
+    if (token && targetEvt?.googleEventId) {
+      void deleteGoogleCalendarEvent(token, targetEvt.googleEventId).catch((err) => {
+        console.error('Google Calendar delete error:', err);
+      });
     }
   };
 
@@ -779,6 +917,11 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateEvent,
         deleteEvent,
         toggleEventCompleted,
+        isGoogleCalendarConfigured,
+        googleCalendarConnected,
+        connectGoogleCalendar,
+        disconnectGoogleCalendar,
+        syncEventToGoogleCalendar,
         addCVVersion,
         deleteCVVersion,
         markNotificationAsRead,

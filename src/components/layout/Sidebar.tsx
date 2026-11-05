@@ -201,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           </div>
 
           <a
-            href="https://github.com"
+            href="https://github.com/luanrichardsz/JobFlow"
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-white/5 transition-colors"
