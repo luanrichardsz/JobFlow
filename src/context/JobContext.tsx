@@ -18,11 +18,18 @@ import {
   mapRowToCV,
   mapCVToRow,
   mapRowToNotification,
+  mapNotificationToRow,
   DbJobApplicationRow,
   DbCalendarEventRow,
   DbCVVersionRow,
   DbNotificationRow,
 } from '../lib/supabase';
+import {
+  computeSmartNotifications,
+  getDismissedNotificationIds,
+  addDismissedNotificationIds,
+  clearDismissedNotificationIds,
+} from '../utils/smartNotifications';
 import {
   isGoogleCalendarConfigured,
   getStoredGoogleToken,
@@ -751,7 +758,38 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Notifications
+  // Notifications: Smart Alerts Engine + manual controls
+  useEffect(() => {
+    if (isLoading) return;
+
+    setNotifications((prev) => {
+      const dismissedIds = getDismissedNotificationIds();
+      const { nextNotifications, toInsert, toDeleteIds } = computeSmartNotifications(
+        applications,
+        events,
+        prev,
+        dismissedIds
+      );
+
+      if (toInsert.length === 0 && toDeleteIds.length === 0) {
+        return prev;
+      }
+
+      if (supabase) {
+        if (toDeleteIds.length > 0) {
+          void supabase.from('notifications').delete().in('id', toDeleteIds);
+        }
+        if (toInsert.length > 0) {
+          void supabase
+            .from('notifications')
+            .upsert(toInsert.map(mapNotificationToRow), { onConflict: 'id' });
+        }
+      }
+
+      return nextNotifications;
+    });
+  }, [applications, events, isLoading]);
+
   const markNotificationAsRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     if (supabase) {
@@ -768,7 +806,10 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const clearNotifications = () => {
-    setNotifications([]);
+    setNotifications((prev) => {
+      addDismissedNotificationIds(prev.map((n) => n.id));
+      return [];
+    });
     showToast('Notificações limpas.', 'info');
     if (supabase) {
       void supabase.from('notifications').delete().neq('id', '');
@@ -886,6 +927,7 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Clear all data in Supabase and local state
   const resetToDefaultData = () => {
+    clearDismissedNotificationIds();
     setApplications([]);
     setEvents([]);
     setCvVersions([]);
