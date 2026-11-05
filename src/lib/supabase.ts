@@ -108,6 +108,7 @@ export interface DbCalendarEventRow {
   meeting_url: string | null;
   notes: string | null;
   completed: boolean;
+  google_event_id?: string | null;
 }
 
 export function mapRowToEvent(row: DbCalendarEventRow): CalendarEvent {
@@ -123,11 +124,12 @@ export function mapRowToEvent(row: DbCalendarEventRow): CalendarEvent {
     meetingUrl: row.meeting_url || '',
     notes: row.notes || '',
     completed: Boolean(row.completed),
+    googleEventId: row.google_event_id || undefined,
   };
 }
 
 export function mapEventToRow(evt: CalendarEvent): DbCalendarEventRow {
-  return {
+  const row: DbCalendarEventRow = {
     id: evt.id,
     application_id: evt.applicationId || null,
     title: evt.title,
@@ -140,6 +142,10 @@ export function mapEventToRow(evt: CalendarEvent): DbCalendarEventRow {
     notes: evt.notes || '',
     completed: evt.completed,
   };
+  if (evt.googleEventId !== undefined) {
+    row.google_event_id = evt.googleEventId;
+  }
+  return row;
 }
 
 export interface DbCVVersionRow {

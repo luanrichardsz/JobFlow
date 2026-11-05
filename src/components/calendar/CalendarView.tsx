@@ -15,9 +15,16 @@ import {
   Trash2,
   X,
   Building,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
 import { CalendarEvent, EventType } from '../../types';
 import { formatDatePT } from '../../utils/formatters';
+import {
+  openInGoogleCalendar,
+  downloadEventICS,
+  exportAllEventsICS,
+} from '../../utils/calendarSync';
 
 export const CalendarView: React.FC = () => {
   const {
@@ -26,6 +33,11 @@ export const CalendarView: React.FC = () => {
     deleteEvent,
     toggleEventCompleted,
     applications,
+    isGoogleCalendarConfigured,
+    googleCalendarConnected,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
+    syncEventToGoogleCalendar,
   } = useJobContext();
 
   const todayISO = new Date().toISOString().split('T')[0];
@@ -45,6 +57,7 @@ export const CalendarView: React.FC = () => {
   const [newEventMeetingUrl, setNewEventMeetingUrl] = useState('');
   const [newEventNotes, setNewEventNotes] = useState('');
   const [selectedAppId, setSelectedAppId] = useState('');
+  const [openInGCalAfterSave, setOpenInGCalAfterSave] = useState(true);
 
   const monthsPT = [
     'Janeiro',
@@ -134,18 +147,21 @@ export const CalendarView: React.FC = () => {
     e.preventDefault();
     if (!newEventTitle.trim() || !newEventCompany.trim()) return;
 
-    addEvent({
-      title: newEventTitle.trim(),
-      company: newEventCompany.trim(),
-      role: newEventRole.trim() || 'Candidatura',
-      type: newEventType,
-      date: newEventDate,
-      time: newEventTime,
-      meetingUrl: newEventMeetingUrl.trim() || undefined,
-      notes: newEventNotes.trim() || undefined,
-      applicationId: selectedAppId || undefined,
-      completed: false,
-    });
+    addEvent(
+      {
+        title: newEventTitle.trim(),
+        company: newEventCompany.trim(),
+        role: newEventRole.trim() || 'Candidatura',
+        type: newEventType,
+        date: newEventDate,
+        time: newEventTime,
+        meetingUrl: newEventMeetingUrl.trim() || undefined,
+        notes: newEventNotes.trim() || undefined,
+        applicationId: selectedAppId || undefined,
+        completed: false,
+      },
+      { openGoogleUrlFallback: !googleCalendarConnected && openInGCalAfterSave }
+    );
 
     setIsAddEventModalOpen(false);
     setNewEventTitle('');
@@ -178,13 +194,55 @@ export const CalendarView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddEventModalOpen(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium text-black bg-white hover:bg-[#e5e5e5] transition-colors self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agendar evento</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {isGoogleCalendarConfigured && (
+            <button
+              onClick={() =>
+                googleCalendarConnected
+                  ? disconnectGoogleCalendar()
+                  : void connectGoogleCalendar()
+              }
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                googleCalendarConnected
+                  ? 'border-[#1f4632] bg-[#13261d] text-[#5ad19e]'
+                  : 'border-[#25272b] bg-[#16181b] text-[#c8cace] hover:text-white'
+              }`}
+              title={
+                googleCalendarConnected
+                  ? 'Clique para desconectar o Google Agenda'
+                  : 'Conectar Google Agenda para sincronização automática'
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  googleCalendarConnected ? 'bg-[#3FBF8A]' : 'bg-[#6b6e74]'
+                }`}
+              />
+              <span>
+                {googleCalendarConnected ? 'Google Agenda ativo' : 'Conectar Google Agenda'}
+              </span>
+            </button>
+          )}
+
+          {events.length > 0 && (
+            <button
+              onClick={() => exportAllEventsICS(events)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#25272b] bg-[#16181b] text-xs font-medium text-[#c8cace] hover:text-white transition-colors"
+              title="Baixar arquivo .ics compatível com Android, iPhone e Google Agenda"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Exportar .ics</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsAddEventModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium text-black bg-white hover:bg-[#e5e5e5] transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Agendar evento</span>
+          </button>
+        </div>
       </div>
 
       {/* Calendar Controls Bar */}
@@ -213,8 +271,9 @@ export const CalendarView: React.FC = () => {
 
           <button
             onClick={() => {
-              setCurrentMonth(10);
-              setCurrentYear(2026);
+              const now = new Date();
+              setCurrentMonth(now.getMonth());
+              setCurrentYear(now.getFullYear());
             }}
             className="px-2.5 py-1 text-xs rounded-md border border-[#25272b] text-neutral-300 hover:text-white hover:bg-white/5"
           >
@@ -382,9 +441,16 @@ export const CalendarView: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className="text-xs text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 mt-1">
-                    {evt.company} · {evt.role}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <p className="text-xs text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 truncate">
+                      {evt.company} · {evt.role}
+                    </p>
+                    {evt.googleEventId && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#13261d] text-[#5ad19e] border border-[#1f4632] text-xs shrink-0">
+                        Sincronizado
+                      </span>
+                    )}
+                  </div>
 
                   {evt.notes && (
                     <p className="text-xs text-neutral-300 dark:text-neutral-300 bg-[#202226] p-2.5 rounded-lg border-[#25272b]/60 mt-2.5 leading-relaxed">
@@ -393,7 +459,7 @@ export const CalendarView: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between text-xs tabular-nums text-neutral-400 mt-3 pt-2.5 border-t border-[#25272b]/60">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-neutral-400 mt-3 pt-2.5 border-t border-[#25272b]/60">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-neutral-500" />
                     <span>
@@ -401,17 +467,41 @@ export const CalendarView: React.FC = () => {
                     </span>
                   </div>
 
-                  {evt.meetingUrl && (
-                    <a
-                      href={evt.meetingUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1 text-[#f4f5f6] hover:underline"
+                  <div className="flex items-center gap-2.5">
+                    {!evt.googleEventId && (
+                      <button
+                        type="button"
+                        onClick={() => void syncEventToGoogleCalendar(evt.id)}
+                        className="flex items-center gap-1 text-[#c8cace] hover:text-white hover:underline"
+                        title="Enviar para o Google Agenda"
+                      >
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        <span>Google Agenda</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => downloadEventICS(evt)}
+                      className="flex items-center gap-1 text-[#a1a4aa] hover:text-white hover:underline"
+                      title="Baixar arquivo .ics para Agenda do Celular (iOS / Android)"
                     >
-                      <Video className="w-3.5 h-3.5" />
-                      <span>Entrar</span>
-                    </a>
-                  )}
+                      <Download className="w-3.5 h-3.5" />
+                      <span>.ics</span>
+                    </button>
+
+                    {evt.meetingUrl && (
+                      <a
+                        href={evt.meetingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-[#f4f5f6] hover:underline"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>Entrar</span>
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -553,6 +643,26 @@ export const CalendarView: React.FC = () => {
                   className="w-full p-2.5 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden resize-none"
                 />
               </div>
+
+              {/* Google Calendar Sync Mode */}
+              {googleCalendarConnected ? (
+                <div className="p-2.5 rounded-lg bg-[#13261d] border border-[#1f4632] text-xs text-[#5ad19e] flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#3FBF8A] shrink-0" />
+                  <span>
+                    Sincronização automática ativa: esta reunião será salva direto na sua agenda do Google.
+                  </span>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#202226] text-xs text-[#c8cace] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={openInGCalAfterSave}
+                    onChange={(e) => setOpenInGCalAfterSave(e.target.checked)}
+                    className="rounded border-[#5a5d63] accent-white"
+                  />
+                  <span>Abrir no Google Agenda automaticamente após salvar</span>
+                </label>
+              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[#25272b]">
                 <button

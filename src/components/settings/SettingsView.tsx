@@ -15,8 +15,10 @@ import {
   Database,
   ExternalLink,
   CheckCircle,
+  CalendarDays,
 } from 'lucide-react';
 import { STATUS_CONFIG } from '../../utils/formatters';
+import { exportAllEventsICS } from '../../utils/calendarSync';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -30,6 +32,11 @@ export const SettingsView: React.FC = () => {
     importDataJSON,
     resetToDefaultData,
     applications,
+    events,
+    isGoogleCalendarConfigured,
+    googleCalendarConnected,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
   } = useJobContext();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -239,6 +246,63 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
+      {/* SEÇÃO 2.5: Sincronização com Google Agenda & Celular */}
+      <div className="p-5 rounded-2xl bg-[#16181b] border-[#25272b] dark:bg-[#16181b] dark:border-[#25272b] light:bg-white light:border-neutral-200 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900">
+              Google Agenda & Calendário do Celular
+            </h2>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              Sincronize entrevistas automaticamente via API ou exporte em formato .ics universal (Android / iPhone).
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {isGoogleCalendarConfigured && (
+              <button
+                onClick={() =>
+                  googleCalendarConnected
+                    ? disconnectGoogleCalendar()
+                    : void connectGoogleCalendar()
+                }
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  googleCalendarConnected
+                    ? 'bg-[#13261d] text-[#5ad19e] border border-[#1f4632]'
+                    : 'bg-white text-black hover:bg-[#e5e5e5]'
+                }`}
+              >
+                {googleCalendarConnected ? 'Desconectar Google Agenda' : 'Conectar conta Google'}
+              </button>
+            )}
+
+            <button
+              onClick={() => exportAllEventsICS(events)}
+              disabled={events.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#25272b] bg-[#202226] text-xs font-medium text-[#c8cace] hover:text-white transition-colors disabled:opacity-40"
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              <span>Baixar agenda (.ics)</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-3.5 rounded-lg bg-[#202226] text-xs text-[#a1a4aa] space-y-1.5 leading-relaxed">
+          {isGoogleCalendarConfigured ? (
+            <p>
+              <strong className="text-[#f4f5f6]">Modo Automático (Google Calendar API):</strong>{' '}
+              {googleCalendarConnected
+                ? 'Ativo. Toda reunião criada, editada ou removida na aba Agenda é sincronizada automaticamente com sua conta Google.'
+                : 'Conecte sua conta Google acima para enviar reuniões automaticamente em segundo plano.'}
+            </p>
+          ) : (
+            <p>
+              <strong className="text-[#f4f5f6]">Modo Direto & .ics ativo:</strong> Você pode enviar qualquer evento para o Google Agenda com 1 clique ou baixar o arquivo <code className="text-[#f4f5f6]">.ics</code> para abrir no celular. Para sincronização 100% invisível via API, basta adicionar <code className="text-[#f4f5f6]">VITE_GOOGLE_CLIENT_ID</code> no arquivo <code className="text-[#f4f5f6]">.env</code>.
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* SEÇÃO 3: Backup, Exportação e Importação */}
       <div className="p-5 rounded-2xl bg-[#16181b] border-[#25272b] dark:bg-[#16181b] dark:border-[#25272b] light:bg-white light:border-neutral-200 space-y-4">
         <div>
@@ -355,7 +419,7 @@ export const SettingsView: React.FC = () => {
 
         <div className="pt-2 flex items-center justify-between">
           <a
-            href="https://github.com"
+            href="https://github.com/luanrichardsz/JobFlow"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 text-xs text-[#f4f5f6] hover:underline"

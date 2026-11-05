@@ -71,6 +71,7 @@ export interface CalendarEvent {
   meetingUrl?: string;
   notes?: string;
   completed: boolean;
+  googleEventId?: string;
 }
 
 export interface CVVersion {
