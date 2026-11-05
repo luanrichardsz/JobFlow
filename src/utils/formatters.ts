@@ -166,3 +166,32 @@ export function formatRelativeTime(dateStr: string): string {
   if (diffDays < 30) return `Há ${Math.floor(diffDays / 7)} sem`;
   return formatDatePT(dateStr);
 }
+
+/**
+ * Checks whether a scheduled calendar event's date/time has already passed.
+ * - Undated events (date === '') never expire automatically.
+ * - Any date strictly before today is considered passed.
+ * - For today's events with a defined time (HH:mm), considers passed 1h after start time.
+ */
+export function hasEventPassed(
+  evt: { date: string; time?: string },
+  now: Date = new Date()
+): boolean {
+  if (!evt.date || !evt.date.trim()) return false;
+  const parts = evt.date.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return false;
+
+  const [year, month, day] = parts;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const eventDayStart = new Date(year, month - 1, day).getTime();
+
+  if (eventDayStart < todayStart) return true;
+  if (eventDayStart > todayStart) return false;
+
+  if (!evt.time || !evt.time.trim()) return false;
+  const [hh, mm] = evt.time.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
+
+  const eventEndTime = new Date(year, month - 1, day, hh + 1, mm).getTime();
+  return now.getTime() >= eventEndTime;
+}

@@ -273,12 +273,23 @@ export const CalendarView: React.FC = () => {
   };
 
   const undatedEvents = useMemo(
-    () => filteredEvents.filter((e) => !e.date || !e.date.trim()),
+    () => filteredEvents.filter((e) => !e.completed && (!e.date || !e.date.trim())),
     [filteredEvents]
   );
 
-  const datedEvents = useMemo(
-    () => filteredEvents.filter((e) => Boolean(e.date && e.date.trim())),
+  const scheduledEvents = useMemo(
+    () =>
+      filteredEvents
+        .filter((e) => !e.completed && Boolean(e.date && e.date.trim()))
+        .sort((a, b) => `${a.date}T${a.time || '00:00'}`.localeCompare(`${b.date}T${b.time || '00:00'}`)),
+    [filteredEvents]
+  );
+
+  const completedEvents = useMemo(
+    () =>
+      filteredEvents
+        .filter((e) => e.completed)
+        .sort((a, b) => `${b.date || ''}T${b.time || '00:00'}`.localeCompare(`${a.date || ''}T${a.time || '00:00'}`)),
     [filteredEvents]
   );
 
@@ -623,129 +634,244 @@ export const CalendarView: React.FC = () => {
         </div>
       )}
 
-      {/* Events Detailed List below Calendar */}
+      {/* Scheduled Active Events List below Calendar */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900">
-          Lista de compromissos agendados ({datedEvents.length})
+          Lista de compromissos agendados ({scheduledEvents.length})
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {datedEvents.map((evt) => {
-            const isInterview = evt.type === 'entrevista';
-            const isTest = evt.type === 'teste_tecnico';
+        {scheduledEvents.length === 0 ? (
+          <div className="p-6 rounded-2xl bg-[#16181b] border border-[#25272b] text-center">
+            <p className="text-xs text-[#a1a4aa]">
+              Nenhum compromisso futuro agendado no momento.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {scheduledEvents.map((evt) => {
+              const isInterview = evt.type === 'entrevista';
+              const isTest = evt.type === 'teste_tecnico';
 
-            return (
-              <div
-                key={evt.id}
-                className={`p-4 rounded-2xl bg-[#16181b] border-[#25272b] dark:bg-[#16181b] dark:border-[#25272b] light:bg-white light:border-neutral-200 flex flex-col justify-between ${
-                  evt.completed ? 'opacity-60' : ''
-                }`}
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${
-                          isInterview
-                            ? 'bg-[#3FBF8A]'
-                            : isTest
-                            ? 'bg-[#e5a93b]'
-                            : 'bg-[#3FBF8A]'
-                        }`}
-                      />
-                      <h3 className="font-semibold text-xs text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900 truncate">
-                        {evt.title}
-                      </h3>
+              return (
+                <div
+                  key={evt.id}
+                  className="p-4 rounded-2xl bg-[#16181b] border border-[#25272b] dark:bg-[#16181b] dark:border-[#25272b] light:bg-white light:border-neutral-200 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isInterview
+                              ? 'bg-[#3FBF8A]'
+                              : isTest
+                              ? 'bg-[#e5a93b]'
+                              : 'bg-[#3FBF8A]'
+                          }`}
+                        />
+                        <h3 className="font-semibold text-xs text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900 truncate">
+                          {evt.title}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleEventCompleted(evt.id)}
+                          className="p-1 rounded transition-colors text-neutral-400 hover:text-[#3FBF8A]"
+                          title="Marcar como concluído"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteEvent(evt.id)}
+                          className="p-1 rounded text-neutral-400 hover:text-[#e5484d]"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => toggleEventCompleted(evt.id)}
-                        className={`p-1 rounded transition-colors ${
-                          evt.completed
-                            ? 'text-[#3FBF8A]'
-                            : 'text-neutral-400 hover:text-[#3FBF8A]'
-                        }`}
-                        title={evt.completed ? 'Reabrir' : 'Concluir'}
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => deleteEvent(evt.id)}
-                        className="p-1 rounded text-neutral-400 hover:text-[#e5484d]"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <p className="text-xs text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 truncate">
+                        {evt.company} · {evt.role}
+                      </p>
+                      {evt.googleEventId && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#13261d] text-[#5ad19e] border border-[#1f4632] text-xs shrink-0">
+                          Sincronizado
+                        </span>
+                      )}
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between gap-2 mt-1">
-                    <p className="text-xs text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 truncate">
-                      {evt.company} · {evt.role}
-                    </p>
-                    {evt.googleEventId && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#13261d] text-[#5ad19e] border border-[#1f4632] text-xs shrink-0">
-                        Sincronizado
-                      </span>
+                    {evt.notes && (
+                      <p className="text-xs text-neutral-300 dark:text-neutral-300 bg-[#202226] p-2.5 rounded-lg border-[#25272b]/60 mt-2.5 leading-relaxed">
+                        {evt.notes}
+                      </p>
                     )}
                   </div>
 
-                  {evt.notes && (
-                    <p className="text-xs text-neutral-300 dark:text-neutral-300 bg-[#202226] p-2.5 rounded-lg border-[#25272b]/60 mt-2.5 leading-relaxed">
-                      {evt.notes}
-                    </p>
-                  )}
-                </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-neutral-400 mt-3 pt-2.5 border-t border-[#25272b]/60">
+                    <button
+                      type="button"
+                      onClick={() => openDefineDateModal(evt)}
+                      className="flex items-center gap-1 hover:text-white transition-colors"
+                      title="Clique para editar data ou horário"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                      <span>
+                        {formatDatePT(evt.date)} às {evt.time}
+                      </span>
+                    </button>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-neutral-400 mt-3 pt-2.5 border-t border-[#25272b]/60">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-neutral-500" />
-                    <span>
-                      {formatDatePT(evt.date)} às {evt.time}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-2.5">
+                      {!evt.googleEventId && (
+                        <button
+                          type="button"
+                          onClick={() => void syncEventToGoogleCalendar(evt.id)}
+                          className="flex items-center gap-1 text-[#c8cace] hover:text-white hover:underline"
+                          title="Enviar para o Google Agenda"
+                        >
+                          <CalendarDays className="w-3.5 h-3.5" />
+                          <span>Google Agenda</span>
+                        </button>
+                      )}
 
-                  <div className="flex items-center gap-2.5">
-                    {!evt.googleEventId && (
                       <button
                         type="button"
-                        onClick={() => void syncEventToGoogleCalendar(evt.id)}
-                        className="flex items-center gap-1 text-[#c8cace] hover:text-white hover:underline"
-                        title="Enviar para o Google Agenda"
+                        onClick={() => downloadEventICS(evt)}
+                        className="flex items-center gap-1 text-[#a1a4aa] hover:text-white hover:underline"
+                        title="Baixar arquivo .ics para Agenda do Celular (iOS / Android)"
                       >
-                        <CalendarDays className="w-3.5 h-3.5" />
-                        <span>Google Agenda</span>
+                        <Download className="w-3.5 h-3.5" />
+                        <span>.ics</span>
                       </button>
+
+                      {evt.meetingUrl && (
+                        <a
+                          href={evt.meetingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 text-[#f4f5f6] hover:underline"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>Entrar</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Completed Events List */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900">
+              Lista de eventos concluídos ({completedEvents.length})
+            </h2>
+            <p className="text-xs text-[#a1a4aa]">
+              Compromissos já realizados ou encerrados automaticamente após a data agendada.
+            </p>
+          </div>
+        </div>
+
+        {completedEvents.length === 0 ? (
+          <div className="p-6 rounded-2xl bg-[#16181b] border border-[#25272b] text-center">
+            <p className="text-xs text-[#a1a4aa]">
+              Nenhum evento concluído registrado ainda.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {completedEvents.map((evt) => {
+              const isInterview = evt.type === 'entrevista';
+              const isTest = evt.type === 'teste_tecnico';
+
+              return (
+                <div
+                  key={evt.id}
+                  className="p-4 rounded-2xl bg-[#16181b] border border-[#25272b] dark:bg-[#16181b] dark:border-[#25272b] light:bg-white light:border-neutral-200 flex flex-col justify-between opacity-75"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isInterview
+                              ? 'bg-[#3FBF8A]'
+                              : isTest
+                              ? 'bg-[#e5a93b]'
+                              : 'bg-[#3FBF8A]'
+                          }`}
+                        />
+                        <h3 className="font-semibold text-xs text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900 truncate line-through">
+                          {evt.title}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleEventCompleted(evt.id)}
+                          className="p-1 rounded transition-colors text-[#3FBF8A] hover:text-[#f4f5f6]"
+                          title="Reabrir compromisso"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteEvent(evt.id)}
+                          className="p-1 rounded text-neutral-400 hover:text-[#e5484d]"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <p className="text-xs text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 truncate">
+                        {evt.company} · {evt.role}
+                      </p>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#13261d] text-[#5ad19e] border border-[#1f4632] text-xs shrink-0">
+                        Concluído
+                      </span>
+                    </div>
+
+                    {evt.notes && (
+                      <p className="text-xs text-neutral-300 dark:text-neutral-300 bg-[#202226] p-2.5 rounded-lg border-[#25272b]/60 mt-2.5 leading-relaxed">
+                        {evt.notes}
+                      </p>
                     )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-neutral-400 mt-3 pt-2.5 border-t border-[#25272b]/60">
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                      <span>
+                        {evt.date
+                          ? `${formatDatePT(evt.date)}${evt.time ? ` às ${evt.time}` : ''}`
+                          : 'Concluído sem data'}
+                      </span>
+                    </div>
 
                     <button
                       type="button"
-                      onClick={() => downloadEventICS(evt)}
+                      onClick={() => openDefineDateModal(evt)}
                       className="flex items-center gap-1 text-[#a1a4aa] hover:text-white hover:underline"
-                      title="Baixar arquivo .ics para Agenda do Celular (iOS / Android)"
+                      title="Reagendar para uma nova data"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>.ics</span>
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      <span>Reagendar</span>
                     </button>
-
-                    {evt.meetingUrl && (
-                      <a
-                        href={evt.meetingUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 text-[#f4f5f6] hover:underline"
-                      >
-                        <Video className="w-3.5 h-3.5" />
-                        <span>Entrar</span>
-                      </a>
-                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Modal: Agendar Evento / Definir Data */}

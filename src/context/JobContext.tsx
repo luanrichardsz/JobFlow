@@ -41,6 +41,7 @@ import {
   deleteGoogleCalendarEvent,
   openInGoogleCalendar,
 } from '../utils/calendarSync';
+import { hasEventPassed } from '../utils/formatters';
 
 export interface Toast {
   id: string;
@@ -239,7 +240,10 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const mappedApps = ((appsRes.data || []) as DbJobApplicationRow[]).map(mapRowToApplication);
         const rawEvents = ((eventsRes.data || []) as DbCalendarEventRow[]).map(mapRowToEvent);
 
-        // Enforce 1 event per applicationId (deduplicate any legacy duplicates)
+        // Enforce 1 event per applicationId and remove events for applications no longer in 'entrevista' or 'teste_tecnico'
+        const appStatusMap = new Map<string, ApplicationStatus>(
+          mappedApps.map((a) => [a.id, a.status])
+        );
         const seenAppIds = new Map<string, CalendarEvent>();
         const deduplicatedEvents: CalendarEvent[] = [];
         const duplicateEventIdsToDelete: string[] = [];
@@ -247,6 +251,11 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         for (const evt of rawEvents) {
           if (!evt.applicationId) {
             deduplicatedEvents.push(evt);
+            continue;
+          }
+          const linkedStatus = appStatusMap.get(evt.applicationId);
+          if (linkedStatus && linkedStatus !== 'entrevista' && linkedStatus !== 'teste_tecnico') {
+            duplicateEventIdsToDelete.push(evt.id);
             continue;
           }
           const prev = seenAppIds.get(evt.applicationId);
@@ -262,6 +271,17 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         }
 
+        // Auto-mark events whose date/time has already passed as completed
+        const now = new Date();
+        const autoCompletedIds: string[] = [];
+        const normalizedEvents = deduplicatedEvents.map((evt) => {
+          if (!evt.completed && hasEventPassed(evt, now)) {
+            autoCompletedIds.push(evt.id);
+            return { ...evt, completed: true };
+          }
+          return evt;
+        });
+
         if (duplicateEventIdsToDelete.length > 0 && supabase) {
           void supabase
             .from('calendar_events')
@@ -269,8 +289,15 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             .in('id', duplicateEventIdsToDelete);
         }
 
+        if (autoCompletedIds.length > 0 && supabase) {
+          void supabase
+            .from('calendar_events')
+            .update({ completed: true })
+            .in('id', autoCompletedIds);
+        }
+
         setApplications(mappedApps);
-        setEvents(deduplicatedEvents);
+        setEvents(normalizedEvents);
         setCvVersions(((cvsRes.data || []) as DbCVVersionRow[]).map(mapRowToCV));
         setNotifications(((notifsRes.data || []) as DbNotificationRow[]).map(mapRowToNotification));
         setSupabaseConnected(true);
@@ -288,6 +315,40 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     void refreshFromSupabase();
   }, [refreshFromSupabase]);
+
+  // Periodically check (every 60s and on window focus) if any scheduled event has passed its date/time
+  useEffect(() => {
+    const checkExpiredEvents = () => {
+      const now = new Date();
+      setEvents((prev) => {
+        const expiredIds: string[] = [];
+        const next = prev.map((evt) => {
+          if (!evt.completed && hasEventPassed(evt, now)) {
+            expiredIds.push(evt.id);
+            return { ...evt, completed: true };
+          }
+          return evt;
+        });
+        if (expiredIds.length === 0) return prev;
+
+        if (supabase) {
+          void supabase
+            .from('calendar_events')
+            .update({ completed: true })
+            .in('id', expiredIds);
+        }
+        return next;
+      });
+    };
+
+    checkExpiredEvents();
+    const interval = window.setInterval(checkExpiredEvents, 60_000);
+    window.addEventListener('focus', checkExpiredEvents);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', checkExpiredEvents);
+    };
+  }, []);
 
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() => {
     if (theme === 'light') return 'light';
@@ -342,6 +403,39 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Helper: Remove all calendar events linked to an application when it leaves 'entrevista'/'teste_tecnico' or is deleted
+  const cleanupApplicationEvents = (appId: string) => {
+    const linkedEvents = events.filter((e) => e.applicationId === appId);
+    if (linkedEvents.length === 0) return;
+
+    const linkedIds = linkedEvents.map((e) => e.id);
+    setEvents((prev) => prev.filter((e) => e.applicationId !== appId));
+    setPendingScheduleDraft((prev) => (prev?.applicationId === appId ? null : prev));
+
+    if (supabase) {
+      void supabase
+        .from('calendar_events')
+        .delete()
+        .in('id', linkedIds)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Supabase cleanup calendar_events error:', error);
+          }
+        });
+    }
+
+    const token = getStoredGoogleToken();
+    if (token) {
+      for (const evt of linkedEvents) {
+        if (evt.googleEventId) {
+          void deleteGoogleCalendarEvent(token, evt.googleEventId).catch((err) => {
+            console.error('Google Calendar delete on cleanup error:', err);
+          });
+        }
+      }
+    }
+  };
 
   // Helper: Redirect to Calendar when an application enters 'entrevista' or 'teste_tecnico'
   // Enforces 1 single CalendarEvent per applicationId: if the application already has an event,
@@ -544,18 +638,19 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }
 
-    if (
-      statusChanged &&
-      (updatedApp.status === 'entrevista' || updatedApp.status === 'teste_tecnico')
-    ) {
-      triggerScheduleRedirect(updatedApp, updatedApp.status);
+    if (statusChanged) {
+      if (updatedApp.status === 'entrevista' || updatedApp.status === 'teste_tecnico') {
+        triggerScheduleRedirect(updatedApp, updatedApp.status);
+      } else {
+        cleanupApplicationEvents(id);
+      }
     }
   };
 
   const deleteApplication = (id: string) => {
     const target = applications.find((a) => a.id === id);
+    cleanupApplicationEvents(id);
     setApplications((prev) => prev.filter((a) => a.id !== id));
-    setEvents((prev) => prev.filter((e) => e.applicationId !== id));
     if (selectedApplicationId === id) setSelectedApplicationId(null);
     if (editingApplicationId === id) setEditingApplicationId(null);
     showToast(`Candidatura em "${target?.company || 'vaga'}" removida.`, 'warning');
@@ -618,11 +713,12 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }
 
-    if (
-      newStatus !== existingApp.status &&
-      (newStatus === 'entrevista' || newStatus === 'teste_tecnico')
-    ) {
-      triggerScheduleRedirect(updatedApp, newStatus);
+    if (newStatus !== existingApp.status) {
+      if (newStatus === 'entrevista' || newStatus === 'teste_tecnico') {
+        triggerScheduleRedirect(updatedApp, newStatus);
+      } else {
+        cleanupApplicationEvents(id);
+      }
     }
   };
 
@@ -769,15 +865,22 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    const finalDate = hasDate ? eventData.date : '';
+    const finalTime = hasDate ? eventData.time || '14:00' : '';
+    const isAlreadyPast = hasDate && hasEventPassed({ date: finalDate, time: finalTime });
+
     const newEvent: CalendarEvent = {
       ...eventData,
-      date: hasDate ? eventData.date : '',
-      time: hasDate ? eventData.time || '14:00' : '',
+      date: finalDate,
+      time: finalTime,
+      completed: isAlreadyPast ? true : Boolean(eventData.completed),
       id: 'evt_' + Math.random().toString(36).substring(2, 9),
     };
     setEvents((prev) => [...prev, newEvent]);
     showToast(
-      hasDate
+      isAlreadyPast
+        ? 'Atividade registrada diretamente em Eventos Concluídos (data passada)!'
+        : hasDate
         ? 'Atividade agendada com sucesso!'
         : 'Compromisso registrado como "Sem data definida"!',
       'success'
@@ -881,9 +984,17 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const hadDate = Boolean(existingEvt.date && existingEvt.date.trim());
     const hasDate = Boolean(updatedEvt.date && updatedEvt.date.trim());
 
+    // When date or time is modified and 'completed' wasn't explicitly overridden,
+    // automatically set completed based on whether the chosen date/time has already passed.
+    if (updates.completed === undefined && (updates.date !== undefined || updates.time !== undefined)) {
+      updatedEvt.completed = hasDate ? hasEventPassed(updatedEvt) : false;
+    }
+
     setEvents((prev) => prev.map((e) => (e.id === id ? updatedEvt : e)));
     showToast(
-      !hadDate && hasDate
+      updatedEvt.completed && !existingEvt.completed
+        ? 'Data passada detectada — evento movido para Concluídos!'
+        : !hadDate && hasDate
         ? 'Data e horário definidos na Agenda!'
         : hasDate
         ? 'Atividade atualizada.'
