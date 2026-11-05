@@ -114,11 +114,12 @@ export const SettingsView: React.FC = () => {
             return (
               <button
                 key={item.key}
-                onClick={() => setTheme(item.key as any)}
+                type="button"
+                onClick={() => setTheme(item.key as 'dark' | 'light' | 'system')}
                 className={`p-3 rounded-lg border text-xs font-medium flex flex-col items-center justify-center gap-2 transition-colors ${
                   isSelected
-                    ? 'border-[#5a5d63] bg-white/[0.06] text-white'
-                    : 'border-[#25272b] text-neutral-400 hover:text-white hover:bg-white/5'
+                    ? 'border-[#5a5d63] bg-white/[0.06] text-white dark:border-[#5a5d63] dark:bg-white/[0.06] dark:text-white light:border-neutral-900 light:bg-neutral-900 light:text-white'
+                    : 'border-[#25272b] text-neutral-400 hover:text-white hover:bg-white/5 dark:border-[#25272b] dark:text-neutral-400 dark:hover:text-white light:border-neutral-200 light:text-neutral-600 light:hover:text-neutral-900 light:hover:bg-neutral-100'
                 }`}
               >
                 <Icon className="w-5 h-5" />

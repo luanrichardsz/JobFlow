@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
 
 @theme {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -21,6 +22,13 @@ html, body {
   background: #0b0c0e;
   color: #f4f5f6;
   color-scheme: dark;
+}
+
+html.light,
+html.light body {
+  background: #f4f5f7;
+  color: #111318;
+  color-scheme: light;
 }
 
 body, button, input, select, textarea {
@@ -51,4 +59,168 @@ body, button, input, select, textarea {
 /* Tabular figures helper */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   LIGHT MODE TOKEN MAPPING (Paper-Flat High Contrast)
+   Maps hardcoded True-black flat classes across all views, modals, and charts
+   when html.light is active, while keeping Dark mode 100% untouched.
+   ============================================================================ */
+
+/* 1. Grounds & Surfaces */
+html.light .bg-\[\#0b0c0e\] {
+  background-color: #f4f5f7 !important;
+}
+html.light .bg-\[\#0b0c0e\]\/40,
+html.light .bg-\[\#0b0c0e\]\/30,
+html.light .bg-\[\#0b0c0e\]\/20 {
+  background-color: #f4f5f7 !important;
+}
+html.light .bg-\[\#16181b\],
+html.light .bg-\[\#16181b\]\/50 {
+  background-color: #ffffff !important;
+}
+html.light .hover\:bg-\[\#1c1f24\]:hover {
+  background-color: #f0f2f5 !important;
+}
+html.light .bg-\[\#202226\],
+html.light .bg-\[\#222428\],
+html.light .bg-\[\#1c1e21\] {
+  background-color: #eef0f4 !important;
+}
+html.light .hover\:bg-\[\#0b0c0e\]:hover {
+  background-color: #e4e7ec !important;
+}
+
+/* Active pills & secondary chart bars */
+html.light .bg-\[\#2a2c30\] {
+  background-color: #111318 !important;
+  color: #ffffff !important;
+}
+html.light .bg-\[\#2e3034\],
+html.light .bg-\[\#3a3d42\] {
+  background-color: #d5d9e0 !important;
+}
+
+/* Hairline KPI Grid Containers */
+html.light .gap-px.bg-\[\#16181b\] {
+  background-color: #e2e5ea !important;
+  border: 1px solid #e2e5ea !important;
+}
+html.light .outline-\[\#0b0c0e\] {
+  outline-color: #e2e5ea !important;
+}
+html.light .ring-\[\#16181b\] {
+  --tw-ring-color: #ffffff !important;
+}
+
+/* 2. Borders & Dividers */
+html.light .border-\[\#25272b\],
+html.light .border-\[\#25272b\]\/80,
+html.light .border-\[\#25272b\]\/60,
+html.light .border-\[\#25272b\]\/40,
+html.light .border-\[\#2e3034\],
+html.light .border-\[\#2a2c30\] {
+  border-color: #e2e5ea !important;
+}
+html.light .divide-\[\#25272b\]\/60 > :not(:last-child),
+html.light .divide-\[\#25272b\]\/50 > :not(:last-child) {
+  border-color: #e2e5ea !important;
+}
+html.light .before\:bg-\[\#25272b\]::before {
+  background-color: #e2e5ea !important;
+}
+
+/* 3. Typography */
+html.light .text-\[\#f4f5f6\] {
+  color: #111318 !important;
+}
+html.light .text-\[\#c8cace\],
+html.light .text-neutral-200,
+html.light .text-neutral-300 {
+  color: #2c313a !important;
+}
+html.light .text-\[\#a1a4aa\],
+html.light .text-neutral-400 {
+  color: #525866 !important;
+}
+html.light .text-\[\#8a8d93\],
+html.light .text-\[\#6b6e74\],
+html.light .text-\[\#7d8086\],
+html.light .text-neutral-500 {
+  color: #68707e !important;
+}
+
+/* 4. Interactive Translucent Overlays & Sidebar Active States */
+html.light .bg-white\/\[0\.05\],
+html.light .bg-white\/\[0\.06\],
+html.light .bg-white\/5,
+html.light .bg-white\/10 {
+  background-color: rgba(17, 19, 24, 0.06) !important;
+}
+html.light .bg-white\/\[0\.05\].text-white,
+html.light .bg-white\/\[0\.06\].text-white {
+  color: #111318 !important;
+}
+html.light aside nav button .text-white {
+  color: #111318 !important;
+}
+html.light .hover\:bg-white\/5:hover,
+html.light .hover\:bg-white\/\[0\.03\]:hover,
+html.light .hover\:bg-white\/10:hover {
+  background-color: rgba(17, 19, 24, 0.05) !important;
+}
+html.light .hover\:text-white:hover,
+html.light .hover\:text-\[\#f4f5f6\]:hover,
+html.light .hover\:text-neutral-200:hover {
+  color: #111318 !important;
+}
+
+/* 5. Primary Pill Buttons (White-on-Dark -> Ink-on-Light) */
+html.light button.bg-white.text-black,
+html.light a.bg-white.text-black {
+  background-color: #111318 !important;
+  color: #ffffff !important;
+}
+html.light button.bg-white.text-black:hover,
+html.light a.bg-white.text-black:hover {
+  background-color: #272b33 !important;
+}
+
+/* 6. Semantic Status Badges in Light Mode */
+html.light .bg-\[\#13261d\] {
+  background-color: #e6f7ef !important;
+}
+html.light .text-\[\#5ad19e\],
+html.light .text-\[\#5ce0a8\] {
+  color: #0d6842 !important;
+}
+html.light .border-\[\#1f4632\] {
+  border-color: #b5e6cf !important;
+}
+
+html.light .bg-\[\#2b2414\] {
+  background-color: #fef6e6 !important;
+}
+html.light .text-\[\#f3c276\] {
+  color: #9a6308 !important;
+}
+html.light .border-\[\#4a3c1c\] {
+  border-color: #f5dba6 !important;
+}
+
+html.light .bg-\[\#2c1a1c\] {
+  background-color: #fdecee !important;
+}
+html.light .text-\[\#f07a7e\] {
+  color: #b4232a !important;
+}
+html.light .border-\[\#4d2427\] {
+  border-color: #f7c3c6 !important;
+}
+
+/* Select options in Light mode */
+html.light option.bg-\[\#16181b\] {
+  background-color: #ffffff;
+  color: #111318;
 }

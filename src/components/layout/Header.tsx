@@ -28,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
     markAllNotificationsAsRead,
     clearNotifications,
     theme,
+    resolvedTheme,
     setTheme,
     setSelectedApplicationId,
   } = useJobContext();
@@ -59,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
   }, []);
 
   const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   };
 
   return (
@@ -209,10 +210,10 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
         <button
           onClick={toggleTheme}
           className="p-2 rounded-md text-neutral-400 hover:text-neutral-200 dark:text-[#a1a4aa] dark:hover:text-[#f4f5f6] light:text-neutral-600 light:hover:text-neutral-900 hover:bg-white/5 transition-colors"
-          aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-          title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+          aria-label={resolvedTheme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+          title={resolvedTheme === 'dark' ? 'Tema claro' : 'Tema escuro'}
         >
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
       </div>
     </header>
