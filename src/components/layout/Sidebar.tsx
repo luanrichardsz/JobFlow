@@ -111,18 +111,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           <div className="h-14 flex items-center justify-between px-4 border-b border-[#25272b] dark:border-[#25272b] light:border-neutral-200">
             <div className="flex items-center gap-2.5">
               {/* JobFlow mark: the pipeline, three stages stepping up to the offer */}
-              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-                <path
-                  d="M4 17 L11 11 L18 5"
-                  fill="none"
-                  stroke="#3a3d42"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-                <circle cx="4" cy="17" r="2.5" fill="#6b6e74" />
-                <circle cx="11" cy="11" r="2.5" fill="#c8cace" />
-                <circle cx="18" cy="5" r="3.5" fill="#3FBF8A" />
-              </svg>
+              <img
+                src="/icon.png"
+                alt="JobFlow"
+                className="w-6 h-6 object-contain"
+              />
               <span className="font-semibold text-sm tracking-tight">JobFlow</span>
             </div>
 

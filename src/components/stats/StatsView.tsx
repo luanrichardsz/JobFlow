@@ -16,6 +16,7 @@ export const StatsView: React.FC = () => {
     let hired = 0;
     let rejected = 0;
     let ghosted = 0;
+    let withdrawn = 0;
 
     applications.forEach((app) => {
       if (app.status === 'em_analise') inReview++;
@@ -25,6 +26,7 @@ export const StatsView: React.FC = () => {
       if (app.status === 'aprovado') hired++;
       if (app.status === 'reprovado') rejected++;
       if (app.status === 'sem_resposta') ghosted++;
+      if (app.status === 'desistencia') withdrawn++;
     });
 
     const reachedInterview = applications.filter((a) =>
@@ -46,6 +48,7 @@ export const StatsView: React.FC = () => {
     const responseRate = total > 0 ? Math.round((respondedCount / total) * 100) : 0;
     const interviewConversion = total > 0 ? Math.round((reachedInterview / total) * 100) : 0;
     const offerConversion = reachedInterview > 0 ? Math.round((reachedOffer / reachedInterview) * 100) : 0;
+    const ghostedRate = total > 0 ? Math.round((ghosted / total) * 100) : 0;
 
     return {
       applied,
@@ -56,10 +59,12 @@ export const StatsView: React.FC = () => {
       hired,
       rejected,
       ghosted,
+      withdrawn,
       respondedCount,
       responseRate,
       interviewConversion,
       offerConversion,
+      ghostedRate,
     };
   }, [applications, total]);
 
@@ -143,9 +148,9 @@ export const StatsView: React.FC = () => {
             caption: `${stageStats.reachedOffer} de ${stageStats.reachedInterview} entrevistas`,
           },
           {
-            label: 'Encerradas sem oferta',
-            value: String(stageStats.rejected + stageStats.ghosted),
-            caption: `${stageStats.rejected} reprovações · ${stageStats.ghosted} sem retorno`,
+            label: 'Sem resposta',
+            value: String(stageStats.ghosted),
+            caption: `${stageStats.ghostedRate}% do total · ${stageStats.rejected + stageStats.withdrawn} finalizadas`,
           },
         ].map((kpi) => (
           <div key={kpi.label} className="p-5 bg-[#16181b] outline outline-1 outline-[#0b0c0e]">
@@ -165,7 +170,7 @@ export const StatsView: React.FC = () => {
             Progressão no funil
           </h2>
           <span className="text-xs text-[#8a8d93] tabular-nums">
-            Acumulado por etapa atingida
+            Distribuição e conversão por etapa
           </span>
         </div>
 
@@ -179,15 +184,15 @@ export const StatsView: React.FC = () => {
             },
             {
               step: 'Triagem ou resposta recebida',
-              count: stageStats.applied - stageStats.ghosted,
-              pct: Math.round(((stageStats.applied - stageStats.ghosted) / (stageStats.applied || 1)) * 100),
+              count: stageStats.respondedCount,
+              pct: Math.round((stageStats.respondedCount / (stageStats.applied || 1)) * 100),
               color: 'bg-[#a1a4aa]',
             },
             {
               step: 'Entrevista realizada',
               count: stageStats.reachedInterview,
               pct: Math.round((stageStats.reachedInterview / (stageStats.applied || 1)) * 100),
-              color: 'bg-[#a1a4aa]',
+              color: 'bg-[#e5a93b]',
             },
             {
               step: 'Teste técnico',
@@ -200,6 +205,18 @@ export const StatsView: React.FC = () => {
               count: stageStats.reachedOffer,
               pct: Math.round((stageStats.reachedOffer / (stageStats.applied || 1)) * 100),
               color: 'bg-[#3FBF8A]',
+            },
+            {
+              step: 'Sem resposta',
+              count: stageStats.ghosted,
+              pct: Math.round((stageStats.ghosted / (stageStats.applied || 1)) * 100),
+              color: 'bg-[#4a4d52]',
+            },
+            {
+              step: 'Finalizado (reprovado / desistência)',
+              count: stageStats.rejected + stageStats.withdrawn,
+              pct: Math.round(((stageStats.rejected + stageStats.withdrawn) / (stageStats.applied || 1)) * 100),
+              color: 'bg-[#e5484d]/70',
             },
           ].map((item) => (
             <div key={item.step} className="space-y-1">

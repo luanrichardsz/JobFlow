@@ -11,6 +11,7 @@ import {
   Eye,
   Pencil,
   Trash2,
+  Clock,
   ExternalLink,
   Building2,
   SlidersHorizontal,
@@ -31,6 +32,7 @@ export const ApplicationsListView: React.FC = () => {
     setSelectedApplicationId,
     setEditingApplicationId,
     deleteApplication,
+    updateStatus,
     setIsNewApplicationModalOpen,
   } = useJobContext();
 
@@ -377,7 +379,7 @@ export const ApplicationsListView: React.FC = () => {
                       </button>
 
                       {isMenuOpen && (
-                        <div className="absolute right-0 mt-1 w-32 rounded-lg border shadow-lg py-1 z-20 bg-[#16181b] border-[#25272b] text-[#f4f5f6] dark:bg-[#16181b] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white light:border-neutral-200 light:text-neutral-900">
+                        <div className="absolute right-0 mt-1 w-44 rounded-lg border shadow-lg py-1 z-20 bg-[#16181b] border-[#25272b] text-[#f4f5f6] dark:bg-[#16181b] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white light:border-neutral-200 light:text-neutral-900">
                           <button
                             onClick={() => {
                               setSelectedApplicationId(app.id);
@@ -398,6 +400,22 @@ export const ApplicationsListView: React.FC = () => {
                             <Pencil className="w-3.5 h-3.5" />
                             <span>Editar</span>
                           </button>
+                          {app.status !== 'sem_resposta' && (
+                            <button
+                              onClick={() => {
+                                updateStatus(
+                                  app.id,
+                                  'sem_resposta',
+                                  'Marcado como "Sem resposta" pela lista de candidaturas.'
+                                );
+                                setActiveMenuJobId(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-neutral-300 hover:bg-white/5"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Marcar sem resposta</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               deleteApplication(app.id);
@@ -569,6 +587,21 @@ export const ApplicationsListView: React.FC = () => {
                       {/* Ações */}
                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
+                          {app.status !== 'sem_resposta' && (
+                            <button
+                              onClick={() =>
+                                updateStatus(
+                                  app.id,
+                                  'sem_resposta',
+                                  'Marcado como "Sem resposta" pela tabela de candidaturas.'
+                                )
+                              }
+                              className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-white/10"
+                              title="Marcar como Sem resposta"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => setSelectedApplicationId(app.id)}
                             className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-white/10"

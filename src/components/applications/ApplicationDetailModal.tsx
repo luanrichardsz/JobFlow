@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useJobContext } from '../../context/JobContext';
 import {
   X,
@@ -40,11 +40,17 @@ export const ApplicationDetailModal: React.FC = () => {
   const app = applications.find((a) => a.id === selectedApplicationId);
 
   // Status update state
-  const [newStatus, setNewStatus] = useState<ApplicationStatus>('em_analise');
+  const [newStatus, setNewStatus] = useState<ApplicationStatus>(app?.status || 'em_analise');
   const [statusNote, setStatusNote] = useState('');
 
   // Personal note state
   const [personalNoteText, setPersonalNoteText] = useState('');
+
+  useEffect(() => {
+    if (app) {
+      setNewStatus(app.status);
+    }
+  }, [app?.id, app?.status]);
 
   if (!app) return null;
 
@@ -238,8 +244,8 @@ export const ApplicationDetailModal: React.FC = () => {
                     <option value="proposta" className="bg-[#16181b]">Proposta</option>
                     <option value="aprovado" className="bg-[#16181b]">Aprovado</option>
                     <option value="reprovado" className="bg-[#16181b]">Reprovado</option>
-                    <option value="sem_resposta" className="bg-[#16181b]">Sem resposta</option>
                     <option value="desistencia" className="bg-[#16181b]">Desistência</option>
+                    <option value="sem_resposta" className="bg-[#16181b]">Sem resposta</option>
                   </select>
                 </div>
                 <div className="sm:col-span-2">

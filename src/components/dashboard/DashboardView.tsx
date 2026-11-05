@@ -29,7 +29,8 @@ const PIPELINE_STAGES: { label: string; statuses: ApplicationStatus[]; bar: stri
   { label: 'Entrevista', statuses: ['entrevista'], bar: 'bg-[#e5a93b]' },
   { label: 'Teste técnico', statuses: ['teste_tecnico'], bar: 'bg-[#e5a93b]' },
   { label: 'Proposta ou aprovado', statuses: ['proposta', 'aprovado'], bar: 'bg-[#3FBF8A]' },
-  { label: 'Encerradas', statuses: ['reprovado', 'sem_resposta', 'desistencia'], bar: 'bg-[#3a3d42]' },
+  { label: 'Sem resposta', statuses: ['sem_resposta'], bar: 'bg-[#4a4d52]' },
+  { label: 'Finalizado (reprov./desist.)', statuses: ['reprovado', 'desistencia'], bar: 'bg-[#e5484d]/70' },
 ];
 
 export const DashboardView: React.FC = () => {
@@ -40,6 +41,7 @@ export const DashboardView: React.FC = () => {
     setEditingApplicationId,
     setIsNewApplicationModalOpen,
     deleteApplication,
+    updateStatus,
     setActiveView,
     toggleEventCompleted,
   } = useJobContext();
@@ -187,7 +189,7 @@ export const DashboardView: React.FC = () => {
           {
             label: 'Taxa de resposta',
             value: `${responseRate}%`,
-            caption: `${respondedApps} de ${totalApplications} responderam`,
+            caption: `${respondedApps} responderam · ${statusCounts.sem_resposta} sem resposta`,
           },
         ].map((kpi) => (
           <div key={kpi.label} className="p-5 bg-[#16181b] outline outline-1 outline-[#0b0c0e]">
@@ -343,7 +345,7 @@ export const DashboardView: React.FC = () => {
                       </button>
 
                       {isMenuOpen && (
-                        <div className="absolute right-0 mt-1 w-32 rounded-lg border shadow-lg py-1 z-20 bg-[#16181b] border-[#25272b] text-[#f4f5f6] dark:bg-[#16181b] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white light:border-neutral-200 light:text-neutral-900">
+                        <div className="absolute right-0 mt-1 w-44 rounded-lg border shadow-lg py-1 z-20 bg-[#16181b] border-[#25272b] text-[#f4f5f6] dark:bg-[#16181b] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white light:border-neutral-200 light:text-neutral-900">
                           <button
                             onClick={() => {
                               setSelectedApplicationId(app.id);
@@ -364,6 +366,22 @@ export const DashboardView: React.FC = () => {
                             <Pencil className="w-3.5 h-3.5" />
                             <span>Editar</span>
                           </button>
+                          {app.status !== 'sem_resposta' && (
+                            <button
+                              onClick={() => {
+                                updateStatus(
+                                  app.id,
+                                  'sem_resposta',
+                                  'Marcado como "Sem resposta" pela Visão geral.'
+                                );
+                                setActiveMenuJobId(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-neutral-300 hover:bg-white/5"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Marcar sem resposta</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               deleteApplication(app.id);

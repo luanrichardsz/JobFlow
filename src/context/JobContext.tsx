@@ -287,20 +287,51 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const updateApplication = (id: string, updates: Partial<JobApplication>) => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    let updatedApp: JobApplication | null = null;
+  const statusDisplayNames: Record<ApplicationStatus, string> = {
+    candidatado: 'Candidatado',
+    em_analise: 'Em análise',
+    entrevista: 'Entrevista',
+    teste_tecnico: 'Teste técnico',
+    proposta: 'Proposta',
+    aprovado: 'Aprovado',
+    reprovado: 'Reprovado',
+    sem_resposta: 'Sem resposta',
+    desistencia: 'Desistência',
+  };
 
-    setApplications((prev) =>
-      prev.map((app) => {
-        if (app.id !== id) return app;
-        updatedApp = { ...app, ...updates, updatedDate: todayStr };
-        return updatedApp;
-      })
-    );
+  const updateApplication = (id: string, updates: Partial<JobApplication>) => {
+    const existingApp = applications.find((app) => app.id === id);
+    if (!existingApp) return;
+
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    let nextHistory = existingApp.activityHistory;
+    if (updates.status && updates.status !== existingApp.status) {
+      const statusLabel = statusDisplayNames[updates.status] || updates.status;
+      const statusEvent: ActivityEvent = {
+        id: 'act_' + Math.random().toString(36).substring(2, 9),
+        date: todayStr,
+        time: timeStr,
+        title: `Status alterado para "${statusLabel}"`,
+        description: `Etapa do processo atualizada de ${statusDisplayNames[existingApp.status]} para ${statusLabel}.`,
+        type: 'status_change',
+      };
+      nextHistory = [statusEvent, ...existingApp.activityHistory];
+    }
+
+    const updatedApp: JobApplication = {
+      ...existingApp,
+      ...updates,
+      updatedDate: todayStr,
+      activityHistory: updates.activityHistory ?? nextHistory,
+    };
+
+    setApplications((prev) => prev.map((app) => (app.id === id ? updatedApp : app)));
     showToast('Candidatura atualizada.', 'info');
 
-    if (supabase && updatedApp) {
+    if (supabase) {
       void supabase
         .from('job_applications')
         .update(mapApplicationToRow(updatedApp))
@@ -336,58 +367,41 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const statusDisplayNames: Record<ApplicationStatus, string> = {
-    candidatado: 'Candidatado',
-    em_analise: 'Em análise',
-    entrevista: 'Entrevista',
-    teste_tecnico: 'Teste técnico',
-    proposta: 'Proposta',
-    aprovado: 'Aprovado',
-    reprovado: 'Reprovado',
-    sem_resposta: 'Sem resposta',
-    desistencia: 'Desistência',
-  };
-
   const updateStatus = (id: string, newStatus: ApplicationStatus, note?: string) => {
+    const existingApp = applications.find((app) => app.id === id);
+    if (!existingApp) return;
+
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
+    const prevStatusLabel = statusDisplayNames[existingApp.status] || existingApp.status;
     const statusLabel = statusDisplayNames[newStatus] || newStatus;
     const newEvent: ActivityEvent = {
       id: 'act_' + Math.random().toString(36).substring(2, 9),
       date: todayStr,
       time: timeStr,
       title: `Status alterado para "${statusLabel}"`,
-      description: note || `Etapa do processo atualizada para ${statusLabel}.`,
+      description: note || `Etapa alterada de "${prevStatusLabel}" para "${statusLabel}".`,
       type: 'status_change',
     };
 
-    let nextHistory: ActivityEvent[] = [];
+    const nextHistory: ActivityEvent[] = [newEvent, ...existingApp.activityHistory];
+    const updatedApp: JobApplication = {
+      ...existingApp,
+      status: newStatus,
+      updatedDate: todayStr,
+      activityHistory: nextHistory,
+    };
 
-    setApplications((prev) =>
-      prev.map((app) => {
-        if (app.id !== id) return app;
-        nextHistory = [newEvent, ...app.activityHistory];
-        return {
-          ...app,
-          status: newStatus,
-          updatedDate: todayStr,
-          activityHistory: nextHistory,
-        };
-      })
-    );
+    setApplications((prev) => prev.map((app) => (app.id === id ? updatedApp : app)));
 
-    showToast(`Status alterado para ${statusDisplayNames[newStatus]}.`, 'success');
+    showToast(`"${existingApp.company}" movida para ${statusLabel}.`, 'success');
 
     if (supabase) {
       void supabase
         .from('job_applications')
-        .update({
-          status: newStatus,
-          updated_date: todayStr,
-          activity_history: nextHistory,
-        })
+        .update(mapApplicationToRow(updatedApp))
         .eq('id', id)
         .then(({ error }) => {
           if (error) {
@@ -402,6 +416,9 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     id: string,
     activity: Omit<ActivityEvent, 'id' | 'date' | 'time'> & { date?: string; time?: string }
   ) => {
+    const existingApp = applications.find((app) => app.id === id);
+    if (!existingApp) return;
+
     const now = new Date();
     const todayStr = activity.date || now.toISOString().split('T')[0];
     const timeStr =
@@ -417,19 +434,14 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type: activity.type,
     };
 
-    let nextHistory: ActivityEvent[] = [];
+    const nextHistory: ActivityEvent[] = [newActivity, ...existingApp.activityHistory];
+    const updatedApp: JobApplication = {
+      ...existingApp,
+      updatedDate: todayStr,
+      activityHistory: nextHistory,
+    };
 
-    setApplications((prev) =>
-      prev.map((app) => {
-        if (app.id !== id) return app;
-        nextHistory = [newActivity, ...app.activityHistory];
-        return {
-          ...app,
-          updatedDate: todayStr,
-          activityHistory: nextHistory,
-        };
-      })
-    );
+    setApplications((prev) => prev.map((app) => (app.id === id ? updatedApp : app)));
     showToast('Nova anotação registrada no histórico.', 'info');
 
     if (supabase) {
@@ -472,17 +484,14 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateEvent = (id: string, updates: Partial<CalendarEvent>) => {
-    let updatedEvt: CalendarEvent | null = null;
-    setEvents((prev) =>
-      prev.map((e) => {
-        if (e.id !== id) return e;
-        updatedEvt = { ...e, ...updates };
-        return updatedEvt;
-      })
-    );
+    const existingEvt = events.find((e) => e.id === id);
+    if (!existingEvt) return;
+
+    const updatedEvt: CalendarEvent = { ...existingEvt, ...updates };
+    setEvents((prev) => prev.map((e) => (e.id === id ? updatedEvt : e)));
     showToast('Atividade atualizada.', 'info');
 
-    if (supabase && updatedEvt) {
+    if (supabase) {
       void supabase
         .from('calendar_events')
         .update(mapEventToRow(updatedEvt))
@@ -515,19 +524,16 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const toggleEventCompleted = (id: string) => {
-    let nextCompleted = false;
+    const existingEvt = events.find((e) => e.id === id);
+    if (!existingEvt) return;
+
+    const nextCompleted = !existingEvt.completed;
     setEvents((prev) =>
-      prev.map((e) => {
-        if (e.id === id) {
-          nextCompleted = !e.completed;
-          showToast(
-            nextCompleted ? 'Atividade marcada como concluída.' : 'Atividade reaberta.',
-            'info'
-          );
-          return { ...e, completed: nextCompleted };
-        }
-        return e;
-      })
+      prev.map((e) => (e.id === id ? { ...e, completed: nextCompleted } : e))
+    );
+    showToast(
+      nextCompleted ? 'Atividade marcada como concluída.' : 'Atividade reaberta.',
+      'info'
     );
 
     if (supabase) {

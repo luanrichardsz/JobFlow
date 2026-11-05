@@ -74,8 +74,8 @@ export const STATUS_CONFIG: Record<
     bg: 'bg-[#1c1e21]',
     text: 'text-[#a1a4aa]',
     border: 'border-[#2a2c30]',
-    dot: 'bg-[#4a4d52]',
-    kanbanColumn: 'Finalizado',
+    dot: 'bg-[#6b6e74]',
+    kanbanColumn: 'Sem resposta',
   },
   desistencia: {
     label: 'Desistência',

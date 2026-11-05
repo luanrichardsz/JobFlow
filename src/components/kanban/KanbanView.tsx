@@ -63,9 +63,16 @@ const KANBAN_COLUMNS: KanbanColumnDef[] = [
   {
     id: 'finalizado',
     title: 'Finalizado',
-    statuses: ['aprovado', 'reprovado', 'sem_resposta', 'desistencia'],
+    statuses: ['aprovado', 'reprovado', 'desistencia'],
     color: '#6b6e74',
     defaultStatus: 'aprovado',
+  },
+    {
+    id: 'sem_resposta',
+    title: 'Sem resposta',
+    statuses: ['sem_resposta'],
+    color: '#6b6e74',
+    defaultStatus: 'sem_resposta',
   },
 ];
 
@@ -82,18 +89,27 @@ export const KanbanView: React.FC = () => {
 
   const handleDragStart = (e: React.DragEvent, appId: string) => {
     e.dataTransfer.setData('text/plain', appId);
+    e.dataTransfer.effectAllowed = 'move';
     setDraggedAppId(appId);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedAppId(null);
+    setActiveDropColumn(null);
   };
 
   const handleDragOver = (e: React.DragEvent, colId: string) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
     if (activeDropColumn !== colId) {
       setActiveDropColumn(colId);
     }
   };
 
-  const handleDragLeave = () => {
-    setActiveDropColumn(null);
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setActiveDropColumn(null);
+    }
   };
 
   const handleDrop = (e: React.DragEvent, column: KanbanColumnDef) => {
@@ -139,7 +155,7 @@ export const KanbanView: React.FC = () => {
       </div>
 
       {/* Columns Container */}
-      <div className="flex gap-3.5 min-w-[1240px] pt-1">
+      <div className="flex gap-3.5 min-w-[1520px] pt-1">
         {KANBAN_COLUMNS.map((col) => {
           const colApps = applications.filter((a) => col.statuses.includes(a.status));
           const isDropActive = activeDropColumn === col.id;
@@ -188,6 +204,7 @@ export const KanbanView: React.FC = () => {
                   </div>
                 ) : (
                   colApps.map((app) => {
+                    const statusCfg = STATUS_CONFIG[app.status];
                     const priorityCfg = PRIORITY_CONFIG[app.priority];
                     const modalityCfg = MODALITY_CONFIG[app.modality];
                     const isDragging = draggedAppId === app.id;
@@ -197,6 +214,7 @@ export const KanbanView: React.FC = () => {
                         key={app.id}
                         draggable
                         onDragStart={(e) => handleDragStart(e, app.id)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => setSelectedApplicationId(app.id)}
                         className={`p-3 rounded-lg border transition-colors cursor-grab active:cursor-grabbing bg-[#16181b] border-[#25272b] text-[#f4f5f6] dark:bg-[#16181b] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white light:border-neutral-200 light:text-neutral-900 hover:border-neutral-500 ${
                           isDragging ? 'opacity-40 scale-95' : 'opacity-100'
@@ -228,6 +246,39 @@ export const KanbanView: React.FC = () => {
                           {app.role}
                         </p>
 
+                        {/* Quick Status Selector */}
+                        <div
+                          className="mb-2"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          <select
+                            value={app.status}
+                            aria-label={`Alterar fase de ${app.company}`}
+                            onChange={(e) => {
+                              const nextStatus = e.target.value as ApplicationStatus;
+                              if (nextStatus !== app.status) {
+                                updateStatus(
+                                  app.id,
+                                  nextStatus,
+                                  `Fase alterada para "${STATUS_CONFIG[nextStatus].label}" no Kanban.`
+                                );
+                              }
+                            }}
+                            className={`w-full px-2 py-1 rounded text-xs font-medium border cursor-pointer outline-hidden ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+                          >
+                            <option value="candidatado" className="bg-[#16181b] text-[#f4f5f6]">Candidatado</option>
+                            <option value="em_analise" className="bg-[#16181b] text-[#f4f5f6]">Em análise</option>
+                            <option value="entrevista" className="bg-[#16181b] text-[#f4f5f6]">Entrevista</option>
+                            <option value="teste_tecnico" className="bg-[#16181b] text-[#f4f5f6]">Teste técnico</option>
+                            <option value="proposta" className="bg-[#16181b] text-[#f4f5f6]">Proposta</option>
+                            <option value="aprovado" className="bg-[#16181b] text-[#f4f5f6]">Aprovado</option>
+                            <option value="reprovado" className="bg-[#16181b] text-[#f4f5f6]">Reprovado</option>
+                            <option value="sem_resposta" className="bg-[#16181b] text-[#f4f5f6]">Sem resposta</option>
+                            <option value="desistencia" className="bg-[#16181b] text-[#f4f5f6]">Desistência</option>
+                          </select>
+                        </div>
+
                         {/* Modality & Tags */}
                         <div className="flex items-center gap-1 mb-2 overflow-hidden">
                           <span
@@ -247,7 +298,7 @@ export const KanbanView: React.FC = () => {
 
                         {/* Footer date */}
                         <div className="flex items-center justify-between text-xs tabular-nums text-neutral-500 pt-2 border-t border-[#25272b]/60 dark:border-[#25272b]/60 light:border-neutral-100">
-                          <span>{formatDatePT(app.appliedDate)}</span>
+                          <span title="Última atualização">{formatDatePT(app.updatedDate)}</span>
                           <span className="text-xs text-neutral-400">
                             {app.activityHistory.length} eventos
                           </span>
