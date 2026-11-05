@@ -41,7 +41,7 @@ import {
   deleteGoogleCalendarEvent,
   openInGoogleCalendar,
 } from '../utils/calendarSync';
-import { hasEventPassed } from '../utils/formatters';
+import { hasEventPassed, findConflictingEvent } from '../utils/formatters';
 
 export interface Toast {
   id: string;
@@ -867,6 +867,22 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const finalDate = hasDate ? eventData.date : '';
     const finalTime = hasDate ? eventData.time || '14:00' : '';
+
+    if (hasDate) {
+      const conflict = findConflictingEvent(events, {
+        date: finalDate,
+        time: finalTime,
+        excludeApplicationId: eventData.applicationId,
+      });
+      if (conflict) {
+        showToast(
+          `Conflito de horário: "${conflict.title}" já está agendado às ${conflict.time}. Escolha um horário com pelo menos 1 hora de diferença.`,
+          'error'
+        );
+        return;
+      }
+    }
+
     const isAlreadyPast = hasDate && hasEventPassed({ date: finalDate, time: finalTime });
 
     const newEvent: CalendarEvent = {
@@ -983,6 +999,22 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedEvt: CalendarEvent = { ...existingEvt, ...updates };
     const hadDate = Boolean(existingEvt.date && existingEvt.date.trim());
     const hasDate = Boolean(updatedEvt.date && updatedEvt.date.trim());
+
+    if (hasDate && (updates.date !== undefined || updates.time !== undefined)) {
+      const conflict = findConflictingEvent(events, {
+        date: updatedEvt.date,
+        time: updatedEvt.time,
+        excludeEventId: id,
+        excludeApplicationId: updatedEvt.applicationId,
+      });
+      if (conflict) {
+        showToast(
+          `Conflito de horário: "${conflict.title}" já está agendado às ${conflict.time}. Escolha um horário com pelo menos 1 hora de diferença.`,
+          'error'
+        );
+        return;
+      }
+    }
 
     // When date or time is modified and 'completed' wasn't explicitly overridden,
     // automatically set completed based on whether the chosen date/time has already passed.

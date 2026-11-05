@@ -1,4 +1,4 @@
-import { ApplicationStatus, Priority, Modality } from '../types';
+import { ApplicationStatus, Priority, Modality, CalendarEvent } from '../types';
 
 // Status colour carries meaning, not category: neutral while waiting, amber when something
 // needs preparing (interview, test), the data green for offers, red for a rejection.
@@ -194,4 +194,48 @@ export function hasEventPassed(
 
   const eventEndTime = new Date(year, month - 1, day, hh + 1, mm).getTime();
   return now.getTime() >= eventEndTime;
+}
+
+function parseTimeToMinutes(timeStr?: string): number | null {
+  if (!timeStr || !timeStr.trim()) return null;
+  const [hh, mm] = timeStr.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+}
+
+/**
+ * Returns an existing event that conflicts with the target date/time
+ * (less than 60 minutes / 1 hour apart on the same day), or null if free.
+ */
+export function findConflictingEvent(
+  events: CalendarEvent[],
+  params: {
+    date: string;
+    time: string;
+    excludeEventId?: string | null;
+    excludeApplicationId?: string | null;
+  }
+): CalendarEvent | null {
+  const { date, time, excludeEventId, excludeApplicationId } = params;
+  if (!date || !date.trim() || !time || !time.trim()) return null;
+
+  const targetMinutes = parseTimeToMinutes(time);
+  if (targetMinutes === null) return null;
+
+  for (const evt of events) {
+    if (excludeEventId && evt.id === excludeEventId) continue;
+    if (excludeApplicationId && evt.applicationId && evt.applicationId === excludeApplicationId) {
+      continue;
+    }
+    if (!evt.date || evt.date !== date) continue;
+
+    const evtMinutes = parseTimeToMinutes(evt.time);
+    if (evtMinutes === null) continue;
+
+    if (Math.abs(targetMinutes - evtMinutes) < 60) {
+      return evt;
+    }
+  }
+
+  return null;
 }

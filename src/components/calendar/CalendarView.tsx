@@ -19,7 +19,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { CalendarEvent, EventType } from '../../types';
-import { formatDatePT } from '../../utils/formatters';
+import { formatDatePT, findConflictingEvent } from '../../utils/formatters';
 import {
   openInGoogleCalendar,
   downloadEventICS,
@@ -41,6 +41,7 @@ export const CalendarView: React.FC = () => {
     connectGoogleCalendar,
     disconnectGoogleCalendar,
     syncEventToGoogleCalendar,
+    showToast,
   } = useJobContext();
 
   const todayISO = new Date().toISOString().split('T')[0];
@@ -171,12 +172,38 @@ export const CalendarView: React.FC = () => {
     return days;
   }, [currentYear, currentMonth]);
 
+  const conflictingEvent = useMemo(() => {
+    if (withoutDate) return null;
+    return findConflictingEvent(events, {
+      date: newEventDate,
+      time: newEventTime,
+      excludeEventId: editingEventId,
+      excludeApplicationId: selectedAppId || null,
+    });
+  }, [withoutDate, events, newEventDate, newEventTime, editingEventId, selectedAppId]);
+
   const saveEventInternal = (forceWithoutDate = false) => {
     if (!newEventTitle.trim() || !newEventCompany.trim()) return;
 
     const isNoDate = forceWithoutDate || withoutDate;
     const finalDate = isNoDate ? '' : newEventDate;
     const finalTime = isNoDate ? '' : newEventTime;
+
+    if (!isNoDate) {
+      const conflict = findConflictingEvent(events, {
+        date: finalDate,
+        time: finalTime,
+        excludeEventId: editingEventId,
+        excludeApplicationId: selectedAppId || null,
+      });
+      if (conflict) {
+        showToast(
+          `Horário indisponível: "${conflict.title}" já está agendado às ${conflict.time}. Escolha um horário com pelo menos 1 hora de diferença.`,
+          'error'
+        );
+        return;
+      }
+    }
 
     if (editingEventId) {
       updateEvent(
@@ -988,30 +1015,40 @@ export const CalendarView: React.FC = () => {
               </label>
 
               {!withoutDate ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Data */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Data</label>
-                    <input
-                      type="date"
-                      value={newEventDate}
-                      onChange={(e) => setNewEventDate(e.target.value)}
-                      required={!withoutDate}
-                      className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
-                    />
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Data */}
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Data</label>
+                      <input
+                        type="date"
+                        value={newEventDate}
+                        onChange={(e) => setNewEventDate(e.target.value)}
+                        required={!withoutDate}
+                        className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
+                      />
+                    </div>
+
+                    {/* Horário */}
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Horário (mín. 1h entre eventos)</label>
+                      <input
+                        type="time"
+                        value={newEventTime}
+                        onChange={(e) => setNewEventTime(e.target.value)}
+                        required={!withoutDate}
+                        className={`w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] text-[#f4f5f6] outline-hidden ${
+                          conflictingEvent ? 'border-[#e5484d]' : 'border-[#25272b]'
+                        }`}
+                      />
+                    </div>
                   </div>
 
-                  {/* Horário */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Horário</label>
-                    <input
-                      type="time"
-                      value={newEventTime}
-                      onChange={(e) => setNewEventTime(e.target.value)}
-                      required={!withoutDate}
-                      className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
-                    />
-                  </div>
+                  {conflictingEvent && (
+                    <div className="p-2.5 rounded-lg bg-[#2c1a1c] border border-[#4d2427] text-xs text-[#f07a7e]">
+                      Conflito de horário: <strong>{conflictingEvent.title}</strong> ({conflictingEvent.company}) já está agendado para este dia às <strong>{conflictingEvent.time}</strong>. Só é permitido salvar com pelo menos <strong>1 hora de diferença</strong>.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-2.5 rounded-lg bg-[#2b2414] border border-[#4a3c1c] text-xs text-[#e5a93b]">
@@ -1088,7 +1125,12 @@ export const CalendarView: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-full text-xs font-medium text-black bg-white hover:bg-[#e5e5e5]"
+                  disabled={!withoutDate && Boolean(conflictingEvent)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-medium transition-opacity ${
+                    !withoutDate && conflictingEvent
+                      ? 'bg-[#25272b] text-[#6b6e74] cursor-not-allowed opacity-60'
+                      : 'text-black bg-white hover:bg-[#e5e5e5]'
+                  }`}
                 >
                   {withoutDate
                     ? 'Salvar sem data'
