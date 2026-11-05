@@ -60,6 +60,7 @@ interface JobContextType {
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
   theme: 'dark' | 'light' | 'system';
+  resolvedTheme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   toasts: Toast[];
   showToast: (message: string, type?: Toast['type']) => void;
@@ -238,21 +239,43 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     void refreshFromSupabase();
   }, [refreshFromSupabase]);
 
-  // Sync theme with HTML class
+  const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() => {
+    if (theme === 'light') return 'light';
+    if (theme === 'dark') return 'dark';
+    return typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  });
+
+  // Sync theme with HTML class (.dark / .light) and OS preference listener
   useEffect(() => {
     const root = document.documentElement;
-    const isDark =
-      theme === 'dark' ||
-      (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-    if (isDark) {
-      root.classList.add('dark');
-      root.style.colorScheme = 'dark';
-    } else {
-      root.classList.remove('dark');
-      root.style.colorScheme = 'light';
-    }
+    const applyTheme = () => {
+      const isDark = theme === 'dark' || (theme === 'system' && mediaQuery.matches);
+      const nextResolved = isDark ? 'dark' : 'light';
+      setResolvedTheme(nextResolved);
+
+      if (isDark) {
+        root.classList.add('dark');
+        root.classList.remove('light');
+        root.style.colorScheme = 'dark';
+      } else {
+        root.classList.remove('dark');
+        root.classList.add('light');
+        root.style.colorScheme = 'light';
+      }
+    };
+
+    applyTheme();
     localStorage.setItem(`${STORAGE_KEY}_theme`, theme);
+
+    if (theme === 'system') {
+      mediaQuery.addEventListener('change', applyTheme);
+      return () => mediaQuery.removeEventListener('change', applyTheme);
+    }
   }, [theme]);
 
   // Keyboard shortcut for command palette (Cmd+K / Ctrl+K)
@@ -904,6 +927,7 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         commandPaletteOpen,
         setCommandPaletteOpen,
         theme,
+        resolvedTheme,
         setTheme,
         toasts,
         showToast,

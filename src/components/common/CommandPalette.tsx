@@ -26,6 +26,7 @@ export const CommandPalette: React.FC = () => {
     setSelectedApplicationId,
     setIsNewApplicationModalOpen,
     theme,
+    resolvedTheme,
     setTheme,
     exportDataCSV,
   } = useJobContext();
@@ -122,11 +123,11 @@ export const CommandPalette: React.FC = () => {
     },
     {
       id: 'act-theme',
-      title: theme === 'dark' ? 'Alternar para Tema Claro' : 'Alternar para Tema Escuro',
+      title: resolvedTheme === 'dark' ? 'Alternar para Tema Claro' : 'Alternar para Tema Escuro',
       category: 'Preferências',
-      icon: theme === 'dark' ? Sun : Moon,
+      icon: resolvedTheme === 'dark' ? Sun : Moon,
       action: () => {
-        setTheme(theme === 'dark' ? 'light' : 'dark');
+        setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
         setCommandPaletteOpen(false);
       },
     },
