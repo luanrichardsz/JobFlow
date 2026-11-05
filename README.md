@@ -34,6 +34,7 @@ Sistema pessoal e open source para gerenciamento e acompanhamento de candidatura
    ```env
    VITE_SUPABASE_URL="https://seu-projeto.supabase.co"
    VITE_SUPABASE_ANON_KEY="sua-chave-anon-publica"
+   VITE_GOOGLE_CLIENT_ID="123456789-aaabbbcccdddeee.apps.googleusercontent.com"
    ```
 
 4. Inicie o servidor de desenvolvimento:
