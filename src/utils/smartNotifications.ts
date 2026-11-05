@@ -80,7 +80,19 @@ export function computeSmartNotifications(
   for (const evt of events) {
     if (evt.completed) continue;
 
-    if (evt.date === todayISO) {
+    if (!evt.date || !evt.date.trim()) {
+      const id = `notif_evt_tbd_${evt.id}`;
+      validAutoIds.add(id);
+      candidates.push({
+        id,
+        title: `Data a definir: ${evt.company}`,
+        message: `"${evt.title}" (${evt.role}) aguarda definição de data e horário na Agenda.`,
+        timestamp: 'Sem data',
+        read: false,
+        type: 'reminder',
+        applicationId: evt.applicationId,
+      });
+    } else if (evt.date === todayISO) {
       const id = `notif_evt_today_${evt.id}_${evt.date}`;
       validAutoIds.add(id);
       candidates.push({

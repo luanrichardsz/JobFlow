@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useJobContext } from '../../context/JobContext';
 import {
   CalendarDays,
@@ -30,9 +30,12 @@ export const CalendarView: React.FC = () => {
   const {
     events,
     addEvent,
+    updateEvent,
     deleteEvent,
     toggleEventCompleted,
     applications,
+    pendingScheduleDraft,
+    setPendingScheduleDraft,
     isGoogleCalendarConfigured,
     googleCalendarConnected,
     connectGoogleCalendar,
@@ -46,6 +49,8 @@ export const CalendarView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   const [filterType, setFilterType] = useState<string>('all');
   const [isAddEventModalOpen, setIsAddEventModalOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [cameFromStatusUpdate, setCameFromStatusUpdate] = useState(false);
 
   // New Event Form State
   const [newEventTitle, setNewEventTitle] = useState('');
@@ -54,10 +59,33 @@ export const CalendarView: React.FC = () => {
   const [newEventType, setNewEventType] = useState<EventType>('entrevista');
   const [newEventDate, setNewEventDate] = useState(todayISO);
   const [newEventTime, setNewEventTime] = useState('14:00');
+  const [withoutDate, setWithoutDate] = useState(false);
   const [newEventMeetingUrl, setNewEventMeetingUrl] = useState('');
   const [newEventNotes, setNewEventNotes] = useState('');
   const [selectedAppId, setSelectedAppId] = useState('');
   const [openInGCalAfterSave, setOpenInGCalAfterSave] = useState(true);
+
+  // Auto-open modal pre-populated when redirected from status change (Entrevista / Teste técnico)
+  // The event is already created as "Sem data definida" (date: '') in JobContext, so editingEventId
+  // points to that event; closing the modal leaves it as "Sem data definida", while submitting sets the date.
+  useEffect(() => {
+    if (!pendingScheduleDraft) return;
+
+    setEditingEventId(pendingScheduleDraft.eventId);
+    setSelectedAppId(pendingScheduleDraft.applicationId);
+    setNewEventCompany(pendingScheduleDraft.company);
+    setNewEventRole(pendingScheduleDraft.role);
+    setNewEventType(pendingScheduleDraft.type);
+    setNewEventTitle(pendingScheduleDraft.title);
+    setNewEventDate(todayISO);
+    setNewEventTime('14:00');
+    setWithoutDate(false);
+    setNewEventMeetingUrl('');
+    setNewEventNotes('');
+    setCameFromStatusUpdate(true);
+    setIsAddEventModalOpen(true);
+    setPendingScheduleDraft(null);
+  }, [pendingScheduleDraft, setPendingScheduleDraft, todayISO]);
 
   const monthsPT = [
     'Janeiro',
@@ -143,27 +171,51 @@ export const CalendarView: React.FC = () => {
     return days;
   }, [currentYear, currentMonth]);
 
-  const handleCreateEvent = (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveEventInternal = (forceWithoutDate = false) => {
     if (!newEventTitle.trim() || !newEventCompany.trim()) return;
 
-    addEvent(
-      {
-        title: newEventTitle.trim(),
-        company: newEventCompany.trim(),
-        role: newEventRole.trim() || 'Candidatura',
-        type: newEventType,
-        date: newEventDate,
-        time: newEventTime,
-        meetingUrl: newEventMeetingUrl.trim() || undefined,
-        notes: newEventNotes.trim() || undefined,
-        applicationId: selectedAppId || undefined,
-        completed: false,
-      },
-      { openGoogleUrlFallback: !googleCalendarConnected && openInGCalAfterSave }
-    );
+    const isNoDate = forceWithoutDate || withoutDate;
+    const finalDate = isNoDate ? '' : newEventDate;
+    const finalTime = isNoDate ? '' : newEventTime;
+
+    if (editingEventId) {
+      updateEvent(
+        editingEventId,
+        {
+          title: newEventTitle.trim(),
+          company: newEventCompany.trim(),
+          role: newEventRole.trim() || 'Candidatura',
+          type: newEventType,
+          date: finalDate,
+          time: finalTime,
+          meetingUrl: newEventMeetingUrl.trim() || undefined,
+          notes: newEventNotes.trim() || undefined,
+          applicationId: selectedAppId || undefined,
+        },
+        { openGoogleUrlFallback: !isNoDate && !googleCalendarConnected && openInGCalAfterSave }
+      );
+    } else {
+      addEvent(
+        {
+          title: newEventTitle.trim(),
+          company: newEventCompany.trim(),
+          role: newEventRole.trim() || 'Candidatura',
+          type: newEventType,
+          date: finalDate,
+          time: finalTime,
+          meetingUrl: newEventMeetingUrl.trim() || undefined,
+          notes: newEventNotes.trim() || undefined,
+          applicationId: selectedAppId || undefined,
+          completed: false,
+        },
+        { openGoogleUrlFallback: !isNoDate && !googleCalendarConnected && openInGCalAfterSave }
+      );
+    }
 
     setIsAddEventModalOpen(false);
+    setEditingEventId(null);
+    setCameFromStatusUpdate(false);
+    setWithoutDate(false);
     setNewEventTitle('');
     setNewEventCompany('');
     setNewEventRole('');
@@ -171,13 +223,101 @@ export const CalendarView: React.FC = () => {
     setNewEventNotes('');
   };
 
+  const handleCreateEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveEventInternal(false);
+  };
+
+  // When closing the modal (X, backdrop, or "Deixar sem data"):
+  // If we came from a status change (Entrevista / Teste técnico), closing guarantees the event stays saved as "Sem data definida".
+  const handleCloseModal = () => {
+    if (cameFromStatusUpdate && editingEventId) {
+      saveEventInternal(true);
+      return;
+    }
+    setIsAddEventModalOpen(false);
+    setEditingEventId(null);
+    setCameFromStatusUpdate(false);
+  };
+
+  const openDefineDateModal = (evt: CalendarEvent) => {
+    setEditingEventId(evt.id);
+    setSelectedAppId(evt.applicationId || '');
+    setNewEventTitle(evt.title);
+    setNewEventCompany(evt.company);
+    setNewEventRole(evt.role);
+    setNewEventType(evt.type);
+    setNewEventDate(evt.date || todayISO);
+    setNewEventTime(evt.time || '14:00');
+    setWithoutDate(false);
+    setNewEventMeetingUrl(evt.meetingUrl || '');
+    setNewEventNotes(evt.notes || '');
+    setCameFromStatusUpdate(false);
+    setIsAddEventModalOpen(true);
+  };
+
+  const openFreshAddModal = () => {
+    setEditingEventId(null);
+    setSelectedAppId('');
+    setNewEventTitle('');
+    setNewEventCompany('');
+    setNewEventRole('');
+    setNewEventType('entrevista');
+    setNewEventDate(todayISO);
+    setNewEventTime('14:00');
+    setWithoutDate(false);
+    setNewEventMeetingUrl('');
+    setNewEventNotes('');
+    setCameFromStatusUpdate(false);
+    setIsAddEventModalOpen(true);
+  };
+
+  const undatedEvents = useMemo(
+    () => filteredEvents.filter((e) => !e.date || !e.date.trim()),
+    [filteredEvents]
+  );
+
+  const datedEvents = useMemo(
+    () => filteredEvents.filter((e) => Boolean(e.date && e.date.trim())),
+    [filteredEvents]
+  );
+
   const handleAppSelect = (appId: string) => {
     setSelectedAppId(appId);
+    if (!appId) {
+      if (!cameFromStatusUpdate) setEditingEventId(null);
+      return;
+    }
+
+    const existingEvt = events.find((e) => e.applicationId === appId);
     const target = applications.find((a) => a.id === appId);
+
+    if (existingEvt) {
+      setEditingEventId(existingEvt.id);
+      setNewEventCompany(existingEvt.company || target?.company || '');
+      setNewEventRole(existingEvt.role || target?.role || '');
+      setNewEventType(existingEvt.type);
+      setNewEventTitle(existingEvt.title);
+      if (existingEvt.date) {
+        setNewEventDate(existingEvt.date);
+        setNewEventTime(existingEvt.time || '14:00');
+        setWithoutDate(false);
+      }
+      setNewEventMeetingUrl(existingEvt.meetingUrl || '');
+      setNewEventNotes(existingEvt.notes || '');
+      return;
+    }
+
+    setEditingEventId(null);
     if (target) {
       setNewEventCompany(target.company);
       setNewEventRole(target.role);
-      setNewEventTitle(`Entrevista · ${target.company}`);
+      const nextType: EventType =
+        target.status === 'teste_tecnico' ? 'teste_tecnico' : 'entrevista';
+      setNewEventType(nextType);
+      setNewEventTitle(
+        `${nextType === 'teste_tecnico' ? 'Teste técnico' : 'Entrevista'} · ${target.company}`
+      );
     }
   };
 
@@ -236,7 +376,7 @@ export const CalendarView: React.FC = () => {
           )}
 
           <button
-            onClick={() => setIsAddEventModalOpen(true)}
+            onClick={openFreshAddModal}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium text-black bg-white hover:bg-[#e5e5e5] transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -384,14 +524,113 @@ export const CalendarView: React.FC = () => {
         </div>
       </div>
 
+      {/* Undated / Pending Date Events Section */}
+      {undatedEvents.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900">
+                Aguardando definição de data ({undatedEvents.length})
+              </h2>
+              <p className="text-xs text-[#a1a4aa]">
+                Entrevistas e testes técnicos com data ainda em aberto pelo recrutador.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {undatedEvents.map((evt) => {
+              const isInterview = evt.type === 'entrevista';
+              const isTest = evt.type === 'teste_tecnico';
+
+              return (
+                <div
+                  key={evt.id}
+                  className={`p-4 rounded-2xl bg-[#16181b] border border-[#4a3c1c] flex flex-col justify-between ${
+                    evt.completed ? 'opacity-60' : ''
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isInterview
+                              ? 'bg-[#3FBF8A]'
+                              : isTest
+                              ? 'bg-[#e5a93b]'
+                              : 'bg-[#3FBF8A]'
+                          }`}
+                        />
+                        <h3 className="font-semibold text-xs text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900 truncate">
+                          {evt.title}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleEventCompleted(evt.id)}
+                          className={`p-1 rounded transition-colors ${
+                            evt.completed
+                              ? 'text-[#3FBF8A]'
+                              : 'text-neutral-400 hover:text-[#3FBF8A]'
+                          }`}
+                          title={evt.completed ? 'Reabrir' : 'Concluir'}
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteEvent(evt.id)}
+                          className="p-1 rounded text-neutral-400 hover:text-[#e5484d]"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <p className="text-xs text-neutral-400 dark:text-[#a1a4aa] light:text-neutral-600 truncate">
+                        {evt.company} · {evt.role}
+                      </p>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#2b2414] text-[#e5a93b] border border-[#4a3c1c] text-xs shrink-0">
+                        Sem data definida
+                      </span>
+                    </div>
+
+                    {evt.notes && (
+                      <p className="text-xs text-neutral-300 dark:text-neutral-300 bg-[#202226] p-2.5 rounded-lg border-[#25272b]/60 mt-2.5 leading-relaxed">
+                        {evt.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-xs mt-3 pt-2.5 border-t border-[#25272b]/60">
+                    <span className="text-[#a1a4aa]">Data a definir</span>
+                    <button
+                      type="button"
+                      onClick={() => openDefineDateModal(evt)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-black bg-white hover:bg-[#e5e5e5] transition-colors"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      <span>Definir data e horário</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Events Detailed List below Calendar */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-[#f4f5f6] dark:text-[#f4f5f6] light:text-neutral-900">
-          Lista de compromissos deste mês ({filteredEvents.length})
+          Lista de compromissos agendados ({datedEvents.length})
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {filteredEvents.map((evt) => {
+          {datedEvents.map((evt) => {
             const isInterview = evt.type === 'entrevista';
             const isTest = evt.type === 'teste_tecnico';
 
@@ -509,21 +748,36 @@ export const CalendarView: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal: Agendar Evento */}
+      {/* Modal: Agendar Evento / Definir Data */}
       {isAddEventModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
-          onClick={() => setIsAddEventModalOpen(false)}
+          onClick={handleCloseModal}
         >
           <div
             className="w-full max-w-lg rounded-2xl shadow-2xl p-6 bg-[#16181b] border-[#25272b] text-[#f4f5f6] dark:bg-[#16181b] dark:border-[#25272b] dark:text-[#f4f5f6] light:bg-white light:border-neutral-200 light:text-neutral-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#25272b]">
-              <h3 className="text-sm font-semibold">Agendar nova atividade</h3>
+              <div>
+                <h3 className="text-sm font-semibold">
+                  {cameFromStatusUpdate
+                    ? `Agendar ${newEventType === 'entrevista' ? 'Entrevista' : 'Teste técnico'} na Agenda`
+                    : editingEventId
+                    ? 'Definir data e horário do compromisso'
+                    : 'Agendar nova atividade'}
+                </h3>
+                {cameFromStatusUpdate && (
+                  <p className="text-xs text-[#a1a4aa] mt-0.5">
+                    Defina a data abaixo ou simplesmente feche este card para manter como &quot;Sem data definida&quot;.
+                  </p>
+                )}
+              </div>
               <button
-                onClick={() => setIsAddEventModalOpen(false)}
+                type="button"
+                onClick={handleCloseModal}
                 className="p-1 rounded text-neutral-400 hover:text-white"
+                title={cameFromStatusUpdate ? 'Fechar e manter sem data definida' : 'Fechar'}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -596,29 +850,48 @@ export const CalendarView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {/* Data */}
-                <div>
-                  <label className="block text-xs font-medium mb-1">Data</label>
-                  <input
-                    type="date"
-                    value={newEventDate}
-                    onChange={(e) => setNewEventDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
-                  />
-                </div>
+              {/* Opção Sem Data Definida */}
+              <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-[#25272b] bg-[#202226] text-xs text-[#c8cace] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={withoutDate}
+                  onChange={(e) => setWithoutDate(e.target.checked)}
+                  className="rounded border-[#5a5d63] accent-white"
+                />
+                <span>Ainda sem data definida (deixar pendente para agendar depois)</span>
+              </label>
 
-                {/* Horário */}
-                <div>
-                  <label className="block text-xs font-medium mb-1">Horário</label>
-                  <input
-                    type="time"
-                    value={newEventTime}
-                    onChange={(e) => setNewEventTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
-                  />
+              {!withoutDate ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Data */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Data</label>
+                    <input
+                      type="date"
+                      value={newEventDate}
+                      onChange={(e) => setNewEventDate(e.target.value)}
+                      required={!withoutDate}
+                      className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
+                    />
+                  </div>
+
+                  {/* Horário */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Horário</label>
+                    <input
+                      type="time"
+                      value={newEventTime}
+                      onChange={(e) => setNewEventTime(e.target.value)}
+                      required={!withoutDate}
+                      className="w-full px-3 py-2 rounded-lg border text-xs bg-[#0b0c0e] border-[#25272b] text-[#f4f5f6] outline-hidden"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-[#2b2414] border border-[#4a3c1c] text-xs text-[#e5a93b]">
+                  O evento ficará salvo em <strong>Aguardando definição de data</strong>. Assim que o recrutador confirmar o dia e horário, basta clicar em <em>Definir data e horário</em>.
+                </div>
+              )}
 
               {/* Link da reunião */}
               <div>
@@ -645,38 +918,57 @@ export const CalendarView: React.FC = () => {
               </div>
 
               {/* Google Calendar Sync Mode */}
-              {googleCalendarConnected ? (
-                <div className="p-2.5 rounded-lg bg-[#13261d] border border-[#1f4632] text-xs text-[#5ad19e] flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#3FBF8A] shrink-0" />
-                  <span>
-                    Sincronização automática ativa: esta reunião será salva direto na sua agenda do Google.
-                  </span>
-                </div>
-              ) : (
-                <label className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#202226] text-xs text-[#c8cace] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={openInGCalAfterSave}
-                    onChange={(e) => setOpenInGCalAfterSave(e.target.checked)}
-                    className="rounded border-[#5a5d63] accent-white"
-                  />
-                  <span>Abrir no Google Agenda automaticamente após salvar</span>
-                </label>
+              {!withoutDate && (
+                googleCalendarConnected ? (
+                  <div className="p-2.5 rounded-lg bg-[#13261d] border border-[#1f4632] text-xs text-[#5ad19e] flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#3FBF8A] shrink-0" />
+                    <span>
+                      Sincronização automática ativa: esta reunião será salva direto na sua agenda do Google.
+                    </span>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#202226] text-xs text-[#c8cace] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={openInGCalAfterSave}
+                      onChange={(e) => setOpenInGCalAfterSave(e.target.checked)}
+                      className="rounded border-[#5a5d63] accent-white"
+                    />
+                    <span>Abrir no Google Agenda automaticamente após salvar</span>
+                  </label>
+                )
               )}
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#25272b]">
-                <button
-                  type="button"
-                  onClick={() => setIsAddEventModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg border border-[#25272b] text-xs text-neutral-300 hover:bg-white/5"
-                >
-                  Cancelar
-                </button>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-[#25272b]">
+                {!cameFromStatusUpdate && (
+                  <button
+                    type="button"
+                    onClick={handleCloseModal}
+                    className="px-3 py-1.5 rounded-lg border border-[#25272b] text-xs text-neutral-300 hover:bg-white/5"
+                  >
+                    Cancelar
+                  </button>
+                )}
+
+                {!withoutDate && (
+                  <button
+                    type="button"
+                    onClick={() => saveEventInternal(true)}
+                    className="px-3 py-1.5 rounded-lg border border-[#4a3c1c] bg-[#2b2414] text-xs font-medium text-[#e5a93b] hover:opacity-90 transition-opacity"
+                  >
+                    Deixar sem data
+                  </button>
+                )}
+
                 <button
                   type="submit"
                   className="px-4 py-1.5 rounded-full text-xs font-medium text-black bg-white hover:bg-[#e5e5e5]"
                 >
-                  Salvar evento
+                  {withoutDate
+                    ? 'Salvar sem data'
+                    : editingEventId
+                    ? 'Salvar data na Agenda'
+                    : 'Salvar na Agenda'}
                 </button>
               </div>
             </form>

@@ -152,6 +152,7 @@ export function downloadEventICS(event: CalendarEvent): void {
 }
 
 export function exportAllEventsICS(events: CalendarEvent[]): void {
+  const datedEvents = events.filter((e) => Boolean(e.date && e.date.trim()));
   const cal = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -159,7 +160,7 @@ export function exportAllEventsICS(events: CalendarEvent[]): void {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'X-WR-CALNAME:JobFlow · Entrevistas',
-    ...events.map(buildVEventBlock),
+    ...datedEvents.map(buildVEventBlock),
     'END:VCALENDAR',
   ].join('\r\n');
 

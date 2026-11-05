@@ -92,6 +92,15 @@ export interface AppNotification {
   applicationId?: string;
 }
 
+export interface PendingScheduleDraft {
+  eventId: string;
+  applicationId: string;
+  company: string;
+  role: string;
+  type: 'entrevista' | 'teste_tecnico';
+  title: string;
+}
+
 export type ActiveView =
   | 'dashboard'
   | 'applications'

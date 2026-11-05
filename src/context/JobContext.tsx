@@ -7,6 +7,7 @@ import {
   ActiveView,
   ApplicationStatus,
   ActivityEvent,
+  PendingScheduleDraft,
 } from '../types';
 import {
   supabase,
@@ -66,6 +67,8 @@ interface JobContextType {
   setIsNewApplicationModalOpen: (open: boolean) => void;
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
+  pendingScheduleDraft: PendingScheduleDraft | null;
+  setPendingScheduleDraft: (draft: PendingScheduleDraft | null) => void;
   theme: 'dark' | 'light' | 'system';
   resolvedTheme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
@@ -88,7 +91,11 @@ interface JobContextType {
     event: Omit<CalendarEvent, 'id'>,
     options?: { openGoogleUrlFallback?: boolean }
   ) => void;
-  updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
+  updateEvent: (
+    id: string,
+    updates: Partial<CalendarEvent>,
+    options?: { openGoogleUrlFallback?: boolean }
+  ) => void;
   deleteEvent: (id: string) => void;
   toggleEventCompleted: (id: string) => void;
 
@@ -137,6 +144,9 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null);
   const [isNewApplicationModalOpen, setIsNewApplicationModalOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [pendingScheduleDraft, setPendingScheduleDraft] = useState<PendingScheduleDraft | null>(
+    null
+  );
 
   // Theme state
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
@@ -226,8 +236,41 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             : firstError.message
         );
       } else {
-        setApplications(((appsRes.data || []) as DbJobApplicationRow[]).map(mapRowToApplication));
-        setEvents(((eventsRes.data || []) as DbCalendarEventRow[]).map(mapRowToEvent));
+        const mappedApps = ((appsRes.data || []) as DbJobApplicationRow[]).map(mapRowToApplication);
+        const rawEvents = ((eventsRes.data || []) as DbCalendarEventRow[]).map(mapRowToEvent);
+
+        // Enforce 1 event per applicationId (deduplicate any legacy duplicates)
+        const seenAppIds = new Map<string, CalendarEvent>();
+        const deduplicatedEvents: CalendarEvent[] = [];
+        const duplicateEventIdsToDelete: string[] = [];
+
+        for (const evt of rawEvents) {
+          if (!evt.applicationId) {
+            deduplicatedEvents.push(evt);
+            continue;
+          }
+          const prev = seenAppIds.get(evt.applicationId);
+          if (!prev) {
+            seenAppIds.set(evt.applicationId, evt);
+            deduplicatedEvents.push(evt);
+          } else {
+            // Keep the later/newer event and mark the older duplicate for deletion
+            duplicateEventIdsToDelete.push(prev.id);
+            seenAppIds.set(evt.applicationId, evt);
+            const idx = deduplicatedEvents.findIndex((e) => e.id === prev.id);
+            if (idx !== -1) deduplicatedEvents[idx] = evt;
+          }
+        }
+
+        if (duplicateEventIdsToDelete.length > 0 && supabase) {
+          void supabase
+            .from('calendar_events')
+            .delete()
+            .in('id', duplicateEventIdsToDelete);
+        }
+
+        setApplications(mappedApps);
+        setEvents(deduplicatedEvents);
         setCvVersions(((cvsRes.data || []) as DbCVVersionRow[]).map(mapRowToCV));
         setNotifications(((notifsRes.data || []) as DbNotificationRow[]).map(mapRowToNotification));
         setSupabaseConnected(true);
@@ -300,6 +343,105 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Helper: Redirect to Calendar when an application enters 'entrevista' or 'teste_tecnico'
+  // Enforces 1 single CalendarEvent per applicationId: if the application already has an event,
+  // reuses and updates that existing event for the new stage instead of duplicating it.
+  const triggerScheduleRedirect = (app: JobApplication, status: ApplicationStatus) => {
+    if (status !== 'entrevista' && status !== 'teste_tecnico') return;
+
+    const label = status === 'entrevista' ? 'Entrevista' : 'Teste técnico';
+    const defaultTitle = `${label} · ${app.company}`;
+
+    const existingForApp = events.find((e) => e.applicationId === app.id);
+
+    let targetEventId: string;
+    let draftTitle = defaultTitle;
+
+    if (existingForApp) {
+      targetEventId = existingForApp.id;
+      const stageChanged = existingForApp.type !== status || existingForApp.completed;
+
+      if (stageChanged) {
+        const token = getStoredGoogleToken();
+        if (token && existingForApp.googleEventId) {
+          void deleteGoogleCalendarEvent(token, existingForApp.googleEventId).catch((err) => {
+            console.error('Google Calendar delete on stage transition error:', err);
+          });
+        }
+
+        const updatedAutoEvent: CalendarEvent = {
+          ...existingForApp,
+          title: defaultTitle,
+          company: app.company,
+          role: app.role,
+          type: status,
+          date: '',
+          time: '',
+          completed: false,
+          googleEventId: undefined,
+        };
+
+        setEvents((prev) =>
+          prev.map((e) => (e.id === existingForApp.id ? updatedAutoEvent : e))
+        );
+
+        if (supabase) {
+          void supabase
+            .from('calendar_events')
+            .update(mapEventToRow(updatedAutoEvent))
+            .eq('id', existingForApp.id)
+            .then(({ error }) => {
+              if (error) {
+                console.error('Supabase auto-update calendar_events error:', error);
+                showToast(`Erro ao atualizar evento na Agenda: ${error.message}`, 'error');
+              }
+            });
+        }
+      } else {
+        draftTitle = existingForApp.title || defaultTitle;
+      }
+    } else {
+      targetEventId = 'evt_' + Math.random().toString(36).substring(2, 9);
+      const autoEvent: CalendarEvent = {
+        id: targetEventId,
+        applicationId: app.id,
+        title: defaultTitle,
+        company: app.company,
+        role: app.role,
+        type: status,
+        date: '',
+        time: '',
+        completed: false,
+      };
+      setEvents((prev) => [...prev, autoEvent]);
+
+      if (supabase) {
+        void supabase
+          .from('calendar_events')
+          .insert(mapEventToRow(autoEvent))
+          .then(({ error }) => {
+            if (error) {
+              console.error('Supabase auto-insert calendar_events error:', error);
+              showToast(`Erro ao salvar evento na Agenda: ${error.message}`, 'error');
+            }
+          });
+      }
+    }
+
+    setSelectedApplicationId(null);
+    setEditingApplicationId(null);
+    setIsNewApplicationModalOpen(false);
+    setPendingScheduleDraft({
+      eventId: targetEventId,
+      applicationId: app.id,
+      company: app.company,
+      role: app.role,
+      type: status,
+      title: draftTitle,
+    });
+    setActiveView('calendar');
+  };
+
   // CRUD Operations
   const addApplication = (appData: Omit<JobApplication, 'id' | 'activityHistory'>) => {
     const now = new Date();
@@ -338,6 +480,10 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         });
     }
+
+    if (newApp.status === 'entrevista' || newApp.status === 'teste_tecnico') {
+      triggerScheduleRedirect(newApp, newApp.status);
+    }
   };
 
   const statusDisplayNames: Record<ApplicationStatus, string> = {
@@ -360,6 +506,7 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const todayStr = now.toISOString().split('T')[0];
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
+    const statusChanged = Boolean(updates.status && updates.status !== existingApp.status);
     let nextHistory = existingApp.activityHistory;
     if (updates.status && updates.status !== existingApp.status) {
       const statusLabel = statusDisplayNames[updates.status] || updates.status;
@@ -395,6 +542,13 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             showToast(`Erro ao atualizar no Supabase: ${error.message}`, 'error');
           }
         });
+    }
+
+    if (
+      statusChanged &&
+      (updatedApp.status === 'entrevista' || updatedApp.status === 'teste_tecnico')
+    ) {
+      triggerScheduleRedirect(updatedApp, updatedApp.status);
     }
   };
 
@@ -462,6 +616,13 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             showToast(`Erro ao salvar status no Supabase: ${error.message}`, 'error');
           }
         });
+    }
+
+    if (
+      newStatus !== existingApp.status &&
+      (newStatus === 'entrevista' || newStatus === 'teste_tecnico')
+    ) {
+      triggerScheduleRedirect(updatedApp, newStatus);
     }
   };
 
@@ -541,6 +702,11 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const target = events.find((e) => e.id === eventId);
     if (!target) return;
 
+    if (!target.date || !target.date.trim()) {
+      showToast('Defina uma data e horário para o evento antes de enviar ao Google Agenda.', 'warning');
+      return;
+    }
+
     let token = getStoredGoogleToken();
     if (!token) {
       if (!isGoogleCalendarConfigured) {
@@ -584,12 +750,38 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     eventData: Omit<CalendarEvent, 'id'>,
     options?: { openGoogleUrlFallback?: boolean }
   ) => {
+    const hasDate = Boolean(eventData.date && eventData.date.trim());
+
+    // Enforce 1 event per applicationId: if an event already exists for this application, update it instead
+    if (eventData.applicationId) {
+      const existingForApp = events.find((e) => e.applicationId === eventData.applicationId);
+      if (existingForApp) {
+        updateEvent(
+          existingForApp.id,
+          {
+            ...eventData,
+            date: hasDate ? eventData.date : '',
+            time: hasDate ? eventData.time || '14:00' : '',
+          },
+          options
+        );
+        return;
+      }
+    }
+
     const newEvent: CalendarEvent = {
       ...eventData,
+      date: hasDate ? eventData.date : '',
+      time: hasDate ? eventData.time || '14:00' : '',
       id: 'evt_' + Math.random().toString(36).substring(2, 9),
     };
     setEvents((prev) => [...prev, newEvent]);
-    showToast('Atividade agendada com sucesso!', 'success');
+    showToast(
+      hasDate
+        ? 'Atividade agendada com sucesso!'
+        : 'Compromisso registrado como "Sem data definida"!',
+      'success'
+    );
 
     if (supabase) {
       void supabase
@@ -602,6 +794,50 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         });
     }
+
+    // Automatically log this schedule entry in the linked application's activityHistory
+    if (newEvent.applicationId) {
+      const targetApp = applications.find((a) => a.id === newEvent.applicationId);
+      if (targetApp) {
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(
+          now.getMinutes()
+        ).padStart(2, '0')}`;
+        const activityType =
+          newEvent.type === 'entrevista'
+            ? 'interview'
+            : newEvent.type === 'teste_tecnico'
+            ? 'test'
+            : 'note';
+        const scheduleActivity: ActivityEvent = {
+          id: 'act_' + Math.random().toString(36).substring(2, 9),
+          date: todayStr,
+          time: timeStr,
+          title: hasDate
+            ? `${newEvent.title} agendado para ${newEvent.date} às ${newEvent.time}`
+            : `${newEvent.title} registrado (data a definir)`,
+          description: newEvent.notes || undefined,
+          type: activityType,
+        };
+        const nextHistory = [scheduleActivity, ...targetApp.activityHistory];
+        setApplications((prev) =>
+          prev.map((a) =>
+            a.id === targetApp.id
+              ? { ...a, updatedDate: todayStr, activityHistory: nextHistory }
+              : a
+          )
+        );
+        if (supabase) {
+          void supabase
+            .from('job_applications')
+            .update({ updated_date: todayStr, activity_history: nextHistory })
+            .eq('id', targetApp.id);
+        }
+      }
+    }
+
+    if (!hasDate) return;
 
     const token = getStoredGoogleToken();
     if (token) {
@@ -633,13 +869,27 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const updateEvent = (id: string, updates: Partial<CalendarEvent>) => {
+  const updateEvent = (
+    id: string,
+    updates: Partial<CalendarEvent>,
+    options?: { openGoogleUrlFallback?: boolean }
+  ) => {
     const existingEvt = events.find((e) => e.id === id);
     if (!existingEvt) return;
 
     const updatedEvt: CalendarEvent = { ...existingEvt, ...updates };
+    const hadDate = Boolean(existingEvt.date && existingEvt.date.trim());
+    const hasDate = Boolean(updatedEvt.date && updatedEvt.date.trim());
+
     setEvents((prev) => prev.map((e) => (e.id === id ? updatedEvt : e)));
-    showToast('Atividade atualizada.', 'info');
+    showToast(
+      !hadDate && hasDate
+        ? 'Data e horário definidos na Agenda!'
+        : hasDate
+        ? 'Atividade atualizada.'
+        : 'Compromisso mantido como "Sem data definida".',
+      hasDate ? 'success' : 'info'
+    );
 
     if (supabase) {
       void supabase
@@ -654,14 +904,91 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }
 
-    const token = getStoredGoogleToken();
-    if (token && updatedEvt.googleEventId) {
-      void updateGoogleCalendarEvent(token, updatedEvt.googleEventId, updatedEvt).catch(
-        (err) => {
-          console.error('Google Calendar update error:', err);
-          setGoogleCalendarConnected(Boolean(getStoredGoogleToken()));
+    // If a previously undated event just received a date, log it in the linked application's history
+    if (!hadDate && hasDate && updatedEvt.applicationId) {
+      const targetApp = applications.find((a) => a.id === updatedEvt.applicationId);
+      if (targetApp) {
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(
+          now.getMinutes()
+        ).padStart(2, '0')}`;
+        const activityType =
+          updatedEvt.type === 'entrevista'
+            ? 'interview'
+            : updatedEvt.type === 'teste_tecnico'
+            ? 'test'
+            : 'note';
+        const scheduleActivity: ActivityEvent = {
+          id: 'act_' + Math.random().toString(36).substring(2, 9),
+          date: todayStr,
+          time: timeStr,
+          title: `${updatedEvt.title} agendado para ${updatedEvt.date} às ${updatedEvt.time}`,
+          description: updatedEvt.notes || undefined,
+          type: activityType,
+        };
+        const nextHistory = [scheduleActivity, ...targetApp.activityHistory];
+        setApplications((prev) =>
+          prev.map((a) =>
+            a.id === targetApp.id
+              ? { ...a, updatedDate: todayStr, activityHistory: nextHistory }
+              : a
+          )
+        );
+        if (supabase) {
+          void supabase
+            .from('job_applications')
+            .update({ updated_date: todayStr, activity_history: nextHistory })
+            .eq('id', targetApp.id);
         }
-      );
+      }
+    }
+
+    const token = getStoredGoogleToken();
+    if (token && !hasDate && existingEvt.googleEventId) {
+      void deleteGoogleCalendarEvent(token, existingEvt.googleEventId).catch((err) => {
+        console.error('Google Calendar delete when clearing date error:', err);
+      });
+      updatedEvt.googleEventId = undefined;
+      setEvents((prev) => prev.map((e) => (e.id === id ? updatedEvt : e)));
+      if (supabase) {
+        void supabase
+          .from('calendar_events')
+          .update({ google_event_id: null })
+          .eq('id', id);
+      }
+    } else if (token && hasDate) {
+      if (updatedEvt.googleEventId) {
+        void updateGoogleCalendarEvent(token, updatedEvt.googleEventId, updatedEvt).catch(
+          (err) => {
+            console.error('Google Calendar update error:', err);
+            setGoogleCalendarConnected(Boolean(getStoredGoogleToken()));
+          }
+        );
+      } else {
+        // Was previously 'Sem data' and now has a defined date -> auto-create in Google Calendar
+        void createGoogleCalendarEvent(token, updatedEvt)
+          .then((gcalId) => {
+            if (gcalId) {
+              setEvents((prev) =>
+                prev.map((e) => (e.id === id ? { ...e, googleEventId: gcalId } : e))
+              );
+              if (supabase) {
+                void supabase
+                  .from('calendar_events')
+                  .update({ google_event_id: gcalId })
+                  .eq('id', id);
+              }
+              showToast('Data definida e sincronizada com o Google Agenda!', 'success');
+            }
+          })
+          .catch((err) => {
+            console.error('Google Calendar create after date set error:', err);
+            setGoogleCalendarConnected(Boolean(getStoredGoogleToken()));
+          });
+      }
+    } else if (!token && hasDate && options?.openGoogleUrlFallback) {
+      openInGoogleCalendar(updatedEvt);
     }
   };
 
@@ -968,6 +1295,8 @@ export const JobProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setIsNewApplicationModalOpen,
         commandPaletteOpen,
         setCommandPaletteOpen,
+        pendingScheduleDraft,
+        setPendingScheduleDraft,
         theme,
         resolvedTheme,
         setTheme,
