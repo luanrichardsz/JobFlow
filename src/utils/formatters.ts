@@ -125,7 +125,7 @@ export const MODALITY_CONFIG: Record<
 };
 
 export function formatDatePT(dateStr: string): string {
-  if (!dateStr) return '';
+  if (!dateStr || !dateStr.trim()) return 'Data a definir';
   try {
     const [year, month, day] = dateStr.split('-');
     if (!year || !month || !day) return dateStr;

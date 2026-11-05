@@ -109,7 +109,12 @@ export const DashboardView: React.FC = () => {
   const upcomingEvents = useMemo(() => {
     return [...events]
       .filter((e) => !e.completed)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort((a, b) => {
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      })
       .slice(0, 4);
   }, [events]);
 
@@ -510,7 +515,7 @@ export const DashboardView: React.FC = () => {
 
                     <div className="flex items-center justify-between text-xs tabular-nums text-neutral-400 dark:text-[#a1a4aa] mt-2 pt-2 border-t border-[#25272b]/40 dark:border-[#25272b]/40 light:border-neutral-200">
                       <span>
-                        {formatDatePT(evt.date)} às {evt.time}
+                        {evt.date ? `${formatDatePT(evt.date)} às ${evt.time}` : 'Data a definir'}
                       </span>
                       {evt.meetingUrl && (
                         <a
